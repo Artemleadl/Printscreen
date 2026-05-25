@@ -6,6 +6,8 @@
 
 ## English
 
+![Snapshot Studio preview](assets/preview.png)
+
 A macOS menu-bar screenshot app with an annotation editor, gradient backgrounds, and cloud upload.
 
 ![macOS](https://img.shields.io/badge/macOS-12%2B-blue) ![Electron](https://img.shields.io/badge/Electron-36-blue) ![License](https://img.shields.io/badge/license-MIT-green)
@@ -109,6 +111,8 @@ screenshot-app/
 ---
 
 ## Русский
+
+![Snapshot Studio preview](assets/preview.png)
 
 Приложение для скриншотов в строке меню macOS с редактором аннотаций, градиентными фонами и загрузкой в облако.
 
