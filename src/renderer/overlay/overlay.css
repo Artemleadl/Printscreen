@@ -1,0 +1,68 @@
+.overlay-loading {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+.overlay-root {
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+  overflow: hidden;
+}
+
+.overlay-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* Before a selection exists, dim the whole frozen screenshot. */
+.overlay-root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+/* Once dragging starts, the selection's box-shadow provides the dimming. */
+.overlay-root.has-selection::before {
+  display: none;
+}
+
+.overlay-hint {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+.overlay-selection {
+  position: absolute;
+  border: 1.5px solid var(--accent);
+  /* Punch a bright hole in the dim mask: everything outside stays darkened. */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+}
+
+.overlay-size {
+  position: absolute;
+  top: -26px;
+  left: 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

@@ -1,0 +1,224 @@
+import { join } from 'node:path'
+import { writeFile, mkdir } from 'node:fs/promises'
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  nativeImage,
+  shell,
+  Tray
+} from 'electron'
+import {
+  IPC,
+  type CaptureMode,
+  type EditorPayload,
+  type OverlayPayload,
+  type SaveResult,
+  type Settings,
+  type UploadResult
+} from '../shared/types'
+import { getSettings, saveSettings } from './store'
+import { captureCursorDisplay, capturePrimaryDisplay, hasScreenAccess } from './capture'
+import { uploadImage } from './uploader'
+import { createEditorWindow, createOverlayWindow, createSettingsWindow } from './windows'
+
+let tray: Tray | null = null
+let overlayWindow: BrowserWindow | null = null
+let settingsWindow: BrowserWindow | null = null
+
+// Each capture window pulls its payload on mount, keyed by webContents id.
+const editorPayloads = new Map<number, EditorPayload>()
+const overlayPayloads = new Map<number, OverlayPayload>()
+
+function dataUrlToBuffer(dataUrl: string): Buffer {
+  const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
+  return Buffer.from(base64, 'base64')
+}
+
+function timestampName(ext = 'png'): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `Screenshot ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} at ${pad(d.getHours())}.${pad(d.getMinutes())}.${pad(d.getSeconds())}.${ext}`
+}
+
+// --- Capture orchestration -------------------------------------------------
+
+function openEditor(payload: EditorPayload): void {
+  const settings = getSettings()
+  if (settings.copyOnCapture) {
+    clipboard.writeImage(nativeImage.createFromDataURL(payload.imageDataUrl))
+  }
+  const win = createEditorWindow(payload.width, payload.height)
+  const id = win.webContents.id
+  editorPayloads.set(id, payload)
+  win.on('closed', () => editorPayloads.delete(id))
+}
+
+async function startCapture(mode: CaptureMode): Promise<void> {
+  try {
+    if (mode === 'fullscreen') {
+      const { imageDataUrl, display } = await capturePrimaryDisplay()
+      openEditor({
+        imageDataUrl,
+        width: Math.round(display.bounds.width * display.scaleFactor),
+        height: Math.round(display.bounds.height * display.scaleFactor)
+      })
+      return
+    }
+
+    // Region mode: freeze the cursor display and let the user drag a selection.
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.close()
+    }
+    const payload = await captureCursorDisplay()
+    overlayWindow = createOverlayWindow(payload.display.bounds)
+    const win = overlayWindow
+    const id = win.webContents.id
+    overlayPayloads.set(id, payload)
+    win.webContents.once('did-finish-load', () => win.focus())
+    win.on('closed', () => {
+      overlayPayloads.delete(id)
+      if (overlayWindow === win) overlayWindow = null
+    })
+  } catch (err) {
+    dialog.showErrorBox('Capture failed', err instanceof Error ? err.message : String(err))
+  }
+}
+
+// --- Global shortcuts ------------------------------------------------------
+
+function registerShortcuts(settings: Settings): void {
+  globalShortcut.unregisterAll()
+  const bind = (accel: string, mode: CaptureMode) => {
+    if (!accel) return
+    try {
+      globalShortcut.register(accel, () => void startCapture(mode))
+    } catch {
+      // Ignore invalid accelerators; the user can fix them in Settings.
+    }
+  }
+  bind(settings.shortcuts.region, 'region')
+  bind(settings.shortcuts.fullscreen, 'fullscreen')
+}
+
+// --- Tray ------------------------------------------------------------------
+
+function buildTray(): void {
+  tray = new Tray(nativeImage.createEmpty())
+  tray.setTitle('◉')
+  tray.setToolTip('Snapshot Studio')
+
+  const settings = getSettings()
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Capture Region',
+      accelerator: settings.shortcuts.region,
+      click: () => void startCapture('region')
+    },
+    {
+      label: 'Capture Fullscreen',
+      accelerator: settings.shortcuts.fullscreen,
+      click: () => void startCapture('fullscreen')
+    },
+    { type: 'separator' },
+    { label: 'Settings…', click: openSettings },
+    { type: 'separator' },
+    { label: 'Quit Snapshot Studio', role: 'quit' }
+  ])
+  tray.setContextMenu(menu)
+}
+
+function openSettings(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.focus()
+    return
+  }
+  settingsWindow = createSettingsWindow()
+  settingsWindow.on('closed', () => {
+    settingsWindow = null
+  })
+}
+
+// --- IPC -------------------------------------------------------------------
+
+function registerIpc(): void {
+  ipcMain.handle(IPC.getSettings, () => getSettings())
+
+  ipcMain.handle(IPC.setSettings, (_e, next: Settings): Settings => {
+    const saved = saveSettings(next)
+    registerShortcuts(saved)
+    app.setLoginItemSettings({ openAtLogin: saved.launchAtLogin })
+    if (tray) buildTray()
+    return saved
+  })
+
+  ipcMain.handle(IPC.pickSaveDirectory, async (): Promise<string | null> => {
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle(IPC.triggerCapture, (_e, mode: CaptureMode) => startCapture(mode))
+
+  ipcMain.handle(IPC.requestOverlay, (e): OverlayPayload | null => overlayPayloads.get(e.sender.id) ?? null)
+  ipcMain.handle(IPC.requestEditor, (e): EditorPayload | null => editorPayloads.get(e.sender.id) ?? null)
+
+  ipcMain.handle(IPC.overlaySelect, (_e, payload: EditorPayload) => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close()
+    openEditor(payload)
+  })
+
+  ipcMain.handle(IPC.overlayCancel, () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close()
+  })
+
+  ipcMain.handle(IPC.editorCopy, (_e, dataUrl: string) => {
+    clipboard.writeImage(nativeImage.createFromDataURL(dataUrl))
+  })
+
+  ipcMain.handle(IPC.editorSave, async (_e, dataUrl: string): Promise<SaveResult> => {
+    const settings = getSettings()
+    const dir = settings.saveDirectory || app.getPath('pictures')
+    await mkdir(dir, { recursive: true })
+    const filePath = join(dir, timestampName())
+    await writeFile(filePath, dataUrlToBuffer(dataUrl))
+    return { filePath }
+  })
+
+  ipcMain.handle(IPC.editorUpload, async (_e, dataUrl: string): Promise<UploadResult> => {
+    const settings = getSettings()
+    const result = await uploadImage(dataUrlToBuffer(dataUrl), timestampName(), settings)
+    clipboard.writeText(result.url)
+    return result
+  })
+
+  ipcMain.handle(IPC.editorClose, (e) => {
+    BrowserWindow.fromWebContents(e.sender)?.close()
+  })
+}
+
+// --- Lifecycle -------------------------------------------------------------
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.whenReady().then(() => {
+    // Menu-bar utility: keep it out of the Dock and app switcher.
+    app.dock?.hide()
+    registerIpc()
+    buildTray()
+    const settings = getSettings()
+    registerShortcuts(settings)
+    app.setLoginItemSettings({ openAtLogin: settings.launchAtLogin })
+  })
+
+  // Keep running in the background as a menu-bar app when all windows close.
+  app.on('window-all-closed', () => {})
+
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll()
+  })
+}

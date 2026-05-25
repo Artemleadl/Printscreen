@@ -1,0 +1,27 @@
+appId: com.snapshotstudio.app
+productName: Snapshot Studio
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  # Screen Recording permission prompt text shown by macOS.
+  extendInfo:
+    NSCameraUsageDescription: Snapshot Studio does not use the camera.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
