@@ -108,6 +108,7 @@ function registerShortcuts(settings: Settings): void {
 // --- Tray ------------------------------------------------------------------
 
 function buildTray(): void {
+  tray?.destroy()
   tray = new Tray(nativeImage.createEmpty())
   tray.setTitle('◉')
   tray.setToolTip('Snapshot Studio')
@@ -152,7 +153,6 @@ function registerIpc(): void {
     const saved = saveSettings(next)
     registerShortcuts(saved)
     app.setLoginItemSettings({ openAtLogin: saved.launchAtLogin })
-    if (tray) buildTray()
     return saved
   })
 
