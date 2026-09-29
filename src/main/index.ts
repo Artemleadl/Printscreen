@@ -44,6 +44,11 @@ const captures = new Map<number, Capture>()
 // Pending "capture is drawn" acknowledgements, keyed by webContents id.
 const drawnWaiters = new Map<number, (drawn: boolean) => void>()
 
+// How long a just-shown overlay gets to put its first frame on screen before
+// it is sent the capture: receiving and drawing a multi-MB image keeps its
+// renderer busy and would hold that frame back (measured: ~0.4s later).
+const OVERLAY_FIRST_FRAME_MS = 100
+
 function dataUrlToBuffer(dataUrl: string): Buffer {
   const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
   return Buffer.from(base64, 'base64')
@@ -79,16 +84,19 @@ function whenDrawn(win: BrowserWindow, timeoutMs: number): Promise<boolean> {
 }
 
 // Hand a (pre-created) window its capture: register it for the page to pull,
-// then ping the page. Resolves once the page has drawn it (see whenDrawn).
-function deliverCapture(win: BrowserWindow, capture: Capture): Promise<boolean> {
+// then ping the page, optionally after a delay. Resolves once the page has
+// drawn it (see whenDrawn).
+function deliverCapture(win: BrowserWindow, capture: Capture, pingDelayMs = 0): Promise<boolean> {
   const id = win.webContents.id
   captures.set(id, capture)
   win.on('closed', () => {
     captures.delete(id)
     drawnWaiters.get(id)?.(false)
   })
-  const drawn = whenDrawn(win, 1000)
-  win.webContents.send(IPC.captureAvailable)
+  const drawn = whenDrawn(win, 1000 + pingDelayMs)
+  setTimeout(() => {
+    if (!win.isDestroyed()) win.webContents.send(IPC.captureAvailable)
+  }, pingDelayMs)
   return drawn
 }
 
@@ -120,7 +128,8 @@ async function openOverlay(capture: Capture, since: number): Promise<void> {
   // visibly lose focus (grey title bar, selection) before it's covered.
   win.showInactive()
   logTiming('overlay shown', since)
-  const drawn = await deliverCapture(win, capture)
+  // The capture is registered right away, so a selection made meanwhile works.
+  const drawn = await deliverCapture(win, capture, OVERLAY_FIRST_FRAME_MS)
   logTiming(drawn ? 'overlay image drawn' : 'overlay closed or timed out before its image was drawn', since)
   if (win.isDestroyed()) return
   // show() (not just focus()) so the app is activated even though the user is
