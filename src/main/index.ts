@@ -267,7 +267,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.setSettings, (_e, next: Settings): Settings => {
     const saved = saveSettings(next)
     registerShortcuts(saved)
-    app.setLoginItemSettings({ openAtLogin: saved.launchAtLogin })
+    syncLoginItem(saved.launchAtLogin)
     return saved
   })
 
@@ -330,7 +330,15 @@ function registerIpc(): void {
 
 // --- Lifecycle -------------------------------------------------------------
 
+// Login items only make sense for the installed app; in dev macOS refuses them.
+function syncLoginItem(openAtLogin: boolean): void {
+  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin })
+}
+
 if (!app.requestSingleInstanceLock()) {
+  // Say why we quit: otherwise the already running copy (maybe an older
+  // build) silently answers the shortcuts instead of this one.
+  console.log('Snapshot Studio is already running — quit it from the menu bar (◉ → Quit) first.')
   app.quit()
 } else {
   app.whenReady().then(() => {
@@ -340,7 +348,7 @@ if (!app.requestSingleInstanceLock()) {
     buildTray()
     const settings = getSettings()
     registerShortcuts(settings)
-    app.setLoginItemSettings({ openAtLogin: settings.launchAtLogin })
+    syncLoginItem(settings.launchAtLogin)
     // Have the capture windows loaded before the first shortcut press.
     prepareCaptureWindow('overlay')
     prepareCaptureWindow('editor')
