@@ -1,18 +1,10 @@
 // Composes the "beautiful screenshot" frame: a background, padding, rounded
 // corners and a drop shadow around the captured image + its annotations.
 
+import type { Background, Frame } from '@shared/types'
 import { drawAnnotation, type Annotation } from './annotations'
 
-export type Background =
-  | { type: 'none' }
-  | { type: 'solid'; color: string }
-  | { type: 'gradient'; from: string; to: string; angle: number }
-
-export interface Frame {
-  padding: number
-  radius: number
-  background: Background
-}
+export type { Background, Frame }
 
 export const DEFAULT_FRAME: Frame = {
   padding: 0,

@@ -6,7 +6,8 @@
   "author": "",
   "license": "MIT",
   "scripts": {
-    "dev": "pkill -f electron-vite 2>/dev/null; pkill -f snapshot-studio 2>/dev/null; sleep 1; electron-vite dev",
+    "predev": "node scripts/kill-stale.mjs",
+    "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",

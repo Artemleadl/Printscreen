@@ -32,15 +32,19 @@ export interface EditorPayload {
   height: number
 }
 
+export type Background =
+  | { type: 'none' }
+  | { type: 'solid'; color: string }
+  | { type: 'gradient'; from: string; to: string; angle: number }
+
+export interface Frame {
+  padding: number
+  radius: number
+  background: Background
+}
+
 export interface EditorPrefs {
-  frame: {
-    padding: number
-    radius: number
-    background:
-      | { type: 'none' }
-      | { type: 'solid'; color: string }
-      | { type: 'gradient'; from: string; to: string; angle: number }
-  }
+  frame: Frame
   color: string
   width: number
   blurRadius: number
@@ -124,6 +128,7 @@ export const IPC = {
   editorClose: 'editor:close',
   getSettings: 'settings:get',
   setSettings: 'settings:set',
+  setEditorPrefs: 'settings:setEditorPrefs',
   pickSaveDirectory: 'settings:pickSaveDirectory',
   triggerCapture: 'capture:trigger'
 } as const

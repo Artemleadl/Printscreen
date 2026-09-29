@@ -183,7 +183,11 @@ export function Settings(): React.ReactElement {
                 placeholder="screenshots"
               />
             </label>
-            <p className="hint">Requires a public bucket with anon insert access.</p>
+            <p className="hint">
+              The bucket must be <b>public</b> (so the link opens without auth) and have a storage
+              policy allowing <code>INSERT</code> for the <code>anon</code> role — otherwise the
+              upload is rejected. Anyone with the anon key can then upload to this bucket.
+            </p>
           </>
         )}
       </section>

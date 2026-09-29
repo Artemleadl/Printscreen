@@ -16,13 +16,14 @@ import {
   IPC,
   type CaptureMode,
   type EditorPayload,
+  type EditorPrefs,
   type OverlayPayload,
   type SaveResult,
   type Settings,
   type UploadResult
 } from '../shared/types'
-import { getSettings, saveSettings } from './store'
-import { captureCursorDisplay, capturePrimaryDisplay, hasScreenAccess } from './capture'
+import { getSettings, saveEditorPrefs, saveSettings } from './store'
+import { captureCursorDisplay, hasScreenAccess } from './capture'
 import { uploadImage } from './uploader'
 import { createEditorWindow, createOverlayWindow, createSettingsWindow } from './windows'
 
@@ -58,10 +59,32 @@ function openEditor(payload: EditorPayload): void {
   win.on('closed', () => editorPayloads.delete(id))
 }
 
+const SCREEN_RECORDING_SETTINGS_URL =
+  'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+
+// Without Screen Recording access macOS returns only the wallpaper, so tell
+// the user how to fix it instead of opening a useless capture.
+async function showScreenAccessHelp(): Promise<void> {
+  const { response } = await dialog.showMessageBox({
+    type: 'warning',
+    message: 'Snapshot Studio needs Screen Recording permission',
+    detail:
+      'Open System Settings → Privacy & Security → Screen Recording, enable Snapshot Studio, then restart the app.',
+    buttons: ['Open System Settings', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1
+  })
+  if (response === 0) void shell.openExternal(SCREEN_RECORDING_SETTINGS_URL)
+}
+
 async function startCapture(mode: CaptureMode): Promise<void> {
+  if (!hasScreenAccess()) {
+    await showScreenAccessHelp()
+    return
+  }
   try {
     if (mode === 'fullscreen') {
-      const { imageDataUrl, display } = await capturePrimaryDisplay()
+      const { imageDataUrl, display } = await captureCursorDisplay()
       openEditor({
         imageDataUrl,
         width: Math.round(display.bounds.width * display.scaleFactor),
@@ -107,10 +130,31 @@ function registerShortcuts(settings: Settings): void {
 
 // --- Tray ------------------------------------------------------------------
 
+// A small "◉" drawn pixel by pixel, for platforms whose tray can't show text.
+function trayIcon(): Electron.NativeImage {
+  const size = 16
+  const bitmap = Buffer.alloc(size * size * 4) // BGRA, transparent by default
+  const c = (size - 1) / 2
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const d = Math.hypot(x - c, y - c)
+      if ((d >= 5.5 && d <= 7.5) || d <= 3) {
+        bitmap.fill(0xff, (y * size + x) * 4, (y * size + x) * 4 + 4) // opaque white
+      }
+    }
+  }
+  return nativeImage.createFromBitmap(bitmap, { width: size, height: size })
+}
+
 function buildTray(): void {
   tray?.destroy()
-  tray = new Tray(nativeImage.createEmpty())
-  tray.setTitle('◉')
+  if (process.platform === 'darwin') {
+    // The macOS menu bar renders a text title, so an empty image is enough.
+    tray = new Tray(nativeImage.createEmpty())
+    tray.setTitle('◉')
+  } else {
+    tray = new Tray(trayIcon())
+  }
   tray.setToolTip('Snapshot Studio')
 
   const settings = getSettings()
@@ -155,6 +199,8 @@ function registerIpc(): void {
     app.setLoginItemSettings({ openAtLogin: saved.launchAtLogin })
     return saved
   })
+
+  ipcMain.handle(IPC.setEditorPrefs, (_e, prefs: EditorPrefs): EditorPrefs => saveEditorPrefs(prefs))
 
   ipcMain.handle(IPC.pickSaveDirectory, async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })

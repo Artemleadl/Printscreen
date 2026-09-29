@@ -14,7 +14,7 @@ A macOS menu-bar screenshot app with an annotation editor, gradient backgrounds,
 
 ### Features
 
-- **Capture** — region selection or full-screen via global hotkeys
+- **Capture** — region selection or full-screen (of the display under the cursor) via global hotkeys
 - **Annotation editor** — arrows, rectangles, ellipses, freehand pen, highlighter, text, step numbers, and blur
 - **Adjustable blur** — slider from 2 to 40 px per blur region
 - **Beautiful frames** — padding, corner radius, and 10 gradient backgrounds (Midnight, Sunset, Ocean, Violet, Mint, Aurora, Peach, Forest, Carbon, Pearl)
@@ -31,8 +31,8 @@ A macOS menu-bar screenshot app with an annotation editor, gradient backgrounds,
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-username>/workout-tg-app.git
-cd workout-tg-app/screenshot-app
+git clone https://github.com/artemleadl/printscreen.git
+cd printscreen
 
 # 2. Install dependencies
 npm install
@@ -84,12 +84,12 @@ npm run dist:mac
 Configure in **Settings → Upload**:
 
 - **Custom HTTP** — POST `multipart/form-data` to any endpoint; supports a bearer token and a configurable JSON path for the returned URL.
-- **Supabase Storage** — provide your project URL, anon key, and bucket name.
+- **Supabase Storage** — provide your project URL, anon key, and bucket name. The bucket must be **public** and have a storage policy allowing `INSERT` for the `anon` role.
 
 ### Project structure
 
 ```
-screenshot-app/
+printscreen/
 ├── src/
 │   ├── main/          # Electron main process (capture, IPC, tray)
 │   ├── preload/       # Context bridge
@@ -98,6 +98,7 @@ screenshot-app/
 │   │   ├── overlay/   # Region-selection overlay
 │   │   └── settings/  # Settings window
 │   └── shared/        # Types shared across processes
+├── scripts/           # Dev helpers (stale-instance cleanup)
 ├── build/             # macOS entitlements
 └── electron-builder.yml
 ```
@@ -120,7 +121,7 @@ screenshot-app/
 
 ### Возможности
 
-- **Захват экрана** — выделение области или полный экран через глобальные горячие клавиши
+- **Захват экрана** — выделение области или полный экран (того монитора, где курсор) через глобальные горячие клавиши
 - **Редактор аннотаций** — стрелки, прямоугольники, эллипсы, перо, маркер, текст, нумерованные шаги и размытие
 - **Настраиваемое размытие** — ползунок от 2 до 40 px для каждой области размытия
 - **Красивые рамки** — отступы, радиус скругления и 10 градиентных фонов (Midnight, Sunset, Ocean, Violet, Mint, Aurora, Peach, Forest, Carbon, Pearl)
@@ -137,8 +138,8 @@ screenshot-app/
 
 ```bash
 # 1. Клонировать репозиторий
-git clone https://github.com/<your-username>/workout-tg-app.git
-cd workout-tg-app/screenshot-app
+git clone https://github.com/artemleadl/printscreen.git
+cd printscreen
 
 # 2. Установить зависимости
 npm install
@@ -190,12 +191,12 @@ npm run dist:mac
 Настраиваются в **Settings → Upload**:
 
 - **Custom HTTP** — POST `multipart/form-data` на любой эндпоинт; поддерживает bearer-токен и настраиваемый JSON-путь к URL в ответе.
-- **Supabase Storage** — укажите URL проекта, anon key и название bucket.
+- **Supabase Storage** — укажите URL проекта, anon key и название bucket. Bucket должен быть **публичным**, а в его storage policy должен быть разрешён `INSERT` для роли `anon`.
 
 ### Структура проекта
 
 ```
-screenshot-app/
+printscreen/
 ├── src/
 │   ├── main/          # Главный процесс Electron (захват, IPC, tray)
 │   ├── preload/       # Context bridge
@@ -204,6 +205,7 @@ screenshot-app/
 │   │   ├── overlay/   # Оверлей выделения области
 │   │   └── settings/  # Окно настроек
 │   └── shared/        # Типы, общие для всех процессов
+├── scripts/           # Вспомогательные скрипты для разработки
 ├── build/             # macOS entitlements
 └── electron-builder.yml
 ```

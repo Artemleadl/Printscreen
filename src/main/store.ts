@@ -1,6 +1,6 @@
 import Store from 'electron-store'
 import { app } from 'electron'
-import { DEFAULT_SETTINGS, DEFAULT_EDITOR_PREFS, type Settings } from '../shared/types'
+import { DEFAULT_SETTINGS, DEFAULT_EDITOR_PREFS, type EditorPrefs, type Settings } from '../shared/types'
 
 const store = new Store<{ settings: Settings }>({
   defaults: { settings: DEFAULT_SETTINGS }
@@ -24,7 +24,16 @@ export function getSettings(): Settings {
   }
 }
 
+// Saves the Settings window's fields. Editor prefs are owned by the editor and
+// always kept from the store, so a stale copy held by one window can't
+// overwrite what another window saved in the meantime.
 export function saveSettings(next: Settings): Settings {
-  store.set('settings', next)
+  store.set('settings', { ...next, editorPrefs: getSettings().editorPrefs })
   return getSettings()
+}
+
+// Saves only the editor's last-used prefs, leaving every other setting as is.
+export function saveEditorPrefs(prefs: EditorPrefs): EditorPrefs {
+  store.set('settings', { ...getSettings(), editorPrefs: prefs })
+  return getSettings().editorPrefs
 }

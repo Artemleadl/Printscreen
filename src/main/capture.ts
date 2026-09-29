@@ -1,12 +1,14 @@
 import { desktopCapturer, screen, systemPreferences } from 'electron'
 import type { DisplayInfo, OverlayPayload } from '../shared/types'
 
-// Returns true on macOS only when the user has granted Screen Recording access.
-// On other platforms (or older macOS) this is a no-op that returns true.
+// Returns false only when macOS has definitely refused Screen Recording access.
+// 'not-determined' counts as allowed: the first capture triggers the system
+// prompt. On other platforms there is no such permission, so this is true.
 export function hasScreenAccess(): boolean {
   if (process.platform !== 'darwin') return true
-  // 'granted' | 'denied' | 'restricted' | 'not-determined'
-  return systemPreferences.getMediaAccessStatus('screen') === 'granted'
+  // 'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown'
+  const status = systemPreferences.getMediaAccessStatus('screen')
+  return status !== 'denied' && status !== 'restricted'
 }
 
 function displayToInfo(display: Electron.Display): DisplayInfo {
@@ -37,17 +39,11 @@ async function captureDisplay(display: Electron.Display): Promise<string> {
   return match.thumbnail.toDataURL()
 }
 
-// Capture the display the cursor currently sits on — used for region selection.
+// Capture the display the cursor currently sits on — used for both region
+// selection and fullscreen, so multi-monitor setups grab the screen in use.
 export async function captureCursorDisplay(): Promise<OverlayPayload> {
   const point = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(point)
-  const imageDataUrl = await captureDisplay(display)
-  return { display: displayToInfo(display), imageDataUrl }
-}
-
-// Capture the primary display in full — used for the fullscreen shortcut.
-export async function capturePrimaryDisplay(): Promise<OverlayPayload> {
-  const display = screen.getPrimaryDisplay()
   const imageDataUrl = await captureDisplay(display)
   return { display: displayToInfo(display), imageDataUrl }
 }

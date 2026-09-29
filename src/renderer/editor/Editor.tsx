@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { EditorPayload, Settings } from '@shared/types'
+import type { EditorPayload } from '@shared/types'
 import { bounds, hitTest, newId, translate, type Annotation, type Point, type Tool } from './annotations'
 import { Toolbar } from './Toolbar'
 import { FrameBar } from './FrameBar'
@@ -39,9 +39,11 @@ export function Editor(): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const baseRef = useRef<HTMLImageElement | null>(null)
   const annsRef = useRef<Annotation[]>([])
+  const draftRef = useRef<Annotation | null>(null)
   const dragRef = useRef<Drag | null>(null)
-  const stepRef = useRef(1)
-  const settingsRef = useRef<Settings | null>(null)
+  // Prefs are only persisted once the saved ones have been loaded, so the
+  // defaults used on first render never overwrite them.
+  const prefsLoadedRef = useRef(false)
 
   annsRef.current = annotations
 
@@ -58,43 +60,41 @@ export function Editor(): React.ReactElement {
       img.src = p.imageDataUrl
     })
     void window.api.getSettings().then((s) => {
-      settingsRef.current = s
       setUploadEnabled(s.upload.provider !== 'none')
       const p = s.editorPrefs
-      setFrame(p.frame as Frame)
+      setFrame(p.frame)
       setColor(p.color)
       setWidth(p.width)
       setBlurRadius(p.blurRadius)
+      prefsLoadedRef.current = true
     })
   }, [])
 
   // --- History helpers ------------------------------------------------------
+  // State updaters stay pure (StrictMode runs them twice in dev), so each
+  // helper reads the current stacks and sets every piece of state directly.
   const commit = useCallback((next: Annotation[]) => {
-    setPast((p) => [...p, annsRef.current])
+    const current = annsRef.current
+    setPast((p) => [...p, current])
     setFuture([])
     setAnnotations(next)
   }, [])
 
   const undo = useCallback(() => {
-    setPast((p) => {
-      if (!p.length) return p
-      const prev = p[p.length - 1]
-      setFuture((f) => [annsRef.current, ...f])
-      setAnnotations(prev)
-      setSelectedId(null)
-      return p.slice(0, -1)
-    })
-  }, [])
+    if (!past.length) return
+    setPast(past.slice(0, -1))
+    setFuture([annsRef.current, ...future])
+    setAnnotations(past[past.length - 1])
+    setSelectedId(null)
+  }, [past, future])
 
   const redo = useCallback(() => {
-    setFuture((f) => {
-      if (!f.length) return f
-      const next = f[0]
-      setPast((p) => [...p, annsRef.current])
-      setAnnotations(next)
-      return f.slice(1)
-    })
-  }, [])
+    if (!future.length) return
+    setFuture(future.slice(1))
+    setPast([...past, annsRef.current])
+    setAnnotations(future[0])
+    setSelectedId(null)
+  }, [past, future])
 
   const deleteSelected = useCallback(() => {
     if (!selectedId) return
@@ -103,12 +103,13 @@ export function Editor(): React.ReactElement {
   }, [selectedId, commit])
 
   // --- Persist editor prefs -------------------------------------------------
+  // Debounced so dragging a slider doesn't write the config on every tick.
   useEffect(() => {
-    const s = settingsRef.current
-    if (!s) return
-    const updated = { ...s, editorPrefs: { frame, color, width, blurRadius } }
-    settingsRef.current = updated
-    void window.api.setSettings(updated)
+    if (!prefsLoadedRef.current) return
+    const timer = setTimeout(() => {
+      void window.api.setEditorPrefs({ frame, color, width, blurRadius })
+    }, 300)
+    return () => clearTimeout(timer)
   }, [frame, color, width, blurRadius])
 
   // --- Canvas drawing -------------------------------------------------------
@@ -161,8 +162,9 @@ export function Editor(): React.ReactElement {
     }
 
     if (tool === 'step') {
-      const ann: Annotation = { id: newId(), type: 'step', color, width, x: p.x, y: p.y, n: stepRef.current }
-      stepRef.current += 1
+      // Continue from the highest step on the canvas, so undo/delete free the number.
+      const n = annsRef.current.reduce((max, a) => (a.type === 'step' ? Math.max(max, a.n) : max), 0) + 1
+      const ann: Annotation = { id: newId(), type: 'step', color, width, x: p.x, y: p.y, n }
       commit([...annsRef.current, ann])
       return
     }
@@ -181,13 +183,14 @@ export function Editor(): React.ReactElement {
 
     setSelectedId(null)
     if (tool === 'pen' || tool === 'highlight') {
-      setDraft({ id: newId(), type: tool, color, width, points: [p] })
+      draftRef.current = { id: newId(), type: tool, color, width, points: [p] }
       dragRef.current = { kind: 'stroke' }
     } else {
       const w = tool === 'blur' ? blurRadius : width
-      setDraft({ id: newId(), type: tool, color, width: w, x1: p.x, y1: p.y, x2: p.x, y2: p.y })
+      draftRef.current = { id: newId(), type: tool, color, width: w, x1: p.x, y1: p.y, x2: p.x, y2: p.y }
       dragRef.current = { kind: 'shape' }
     }
+    setDraft(draftRef.current)
     attachWindowDrag()
   }
 
@@ -209,14 +212,15 @@ export function Editor(): React.ReactElement {
       return
     }
 
-    setDraft((d) => {
-      if (!d) return d
-      if (d.type === 'pen' || d.type === 'highlight') {
-        return { ...d, points: [...d.points, p] }
-      }
-      if ('x2' in d) return { ...d, x2: p.x, y2: p.y }
-      return d
-    })
+    // Track the draft in the ref too, so mouseup commits the latest shape even
+    // if React hasn't re-rendered since the last move.
+    const d = draftRef.current
+    if (!d) return
+    let next = d
+    if (d.type === 'pen' || d.type === 'highlight') next = { ...d, points: [...d.points, p] }
+    else if ('x2' in d) next = { ...d, x2: p.x, y2: p.y }
+    draftRef.current = next
+    setDraft(next)
   }
 
   const onWindowUp = (): void => {
@@ -225,21 +229,23 @@ export function Editor(): React.ReactElement {
     dragRef.current = null
 
     if (drag?.kind === 'move') {
+      // A plain click to select doesn't change anything worth undoing.
+      if (annsRef.current === drag.snapshot) return
       // Record the pre-move state so the move is a single undo step.
       setPast((pp) => [...pp, drag.snapshot])
       setFuture([])
       return
     }
 
-    setDraft((d) => {
-      if (!d) return null
-      const valid =
-        d.type === 'pen' || d.type === 'highlight'
-          ? d.points.length > 1
-          : 'x2' in d && (Math.abs(d.x2 - d.x1) > 3 || Math.abs(d.y2 - d.y1) > 3)
-      if (valid) commit([...annsRef.current, d])
-      return null
-    })
+    const d = draftRef.current
+    draftRef.current = null
+    setDraft(null)
+    if (!d) return
+    const valid =
+      d.type === 'pen' || d.type === 'highlight'
+        ? d.points.length > 1
+        : 'x2' in d && (Math.abs(d.x2 - d.x1) > 3 || Math.abs(d.y2 - d.y1) > 3)
+    if (valid) commit([...annsRef.current, d])
   }
 
   const commitText = (): void => {
