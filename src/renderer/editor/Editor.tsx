@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { EditorPayload } from '@shared/types'
+import type { CaptureSize } from '@shared/types'
 import { bounds, hitTest, newId, translate, type Annotation, type Point, type Tool } from './annotations'
 import { Toolbar } from './Toolbar'
 import { FrameBar } from './FrameBar'
@@ -19,7 +19,7 @@ type Drag =
   | { kind: 'move'; start: Point; original: Annotation; snapshot: Annotation[] }
 
 export function Editor(): React.ReactElement {
-  const [payload, setPayload] = useState<EditorPayload | null>(null)
+  const [payload, setPayload] = useState<CaptureSize | null>(null)
   const [baseLoaded, setBaseLoaded] = useState(false)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [past, setPast] = useState<Annotation[][]>([])
@@ -37,37 +37,47 @@ export function Editor(): React.ReactElement {
   const [frame, setFrame] = useState<Frame>(DEFAULT_FRAME)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const baseRef = useRef<HTMLImageElement | null>(null)
+  // Offscreen canvas holding the captured image.
+  const baseRef = useRef<HTMLCanvasElement | null>(null)
   const annsRef = useRef<Annotation[]>([])
   const draftRef = useRef<Annotation | null>(null)
   const dragRef = useRef<Drag | null>(null)
-  // Prefs are only persisted once the saved ones have been loaded, so the
-  // defaults used on first render never overwrite them.
-  const prefsLoadedRef = useRef(false)
+  // Prefs as last loaded or saved (JSON). Nothing is persisted before they're
+  // loaded, so first-render defaults never overwrite them, and values that
+  // are already stored aren't written back each time a capture loads.
+  const savedPrefsRef = useRef<string | null>(null)
 
   annsRef.current = annotations
 
   // --- Load capture + settings ---------------------------------------------
+  // The window is created ahead of time: load on mount (covers a reload) and
+  // whenever main hands it a capture. Settings are re-read each time, as they
+  // may have changed while the window sat hidden.
   useEffect(() => {
-    void window.api.requestEditorData().then((p) => {
-      if (!p) return
-      setPayload(p)
-      const img = new Image()
-      img.onload = () => {
-        baseRef.current = img
-        setBaseLoaded(true)
-      }
-      img.src = p.imageDataUrl
-    })
-    void window.api.getSettings().then((s) => {
+    let cancelled = false
+    const load = async (): Promise<void> => {
+      const [size, s] = await Promise.all([window.api.loadCapture(), window.api.getSettings()])
+      if (cancelled) return
       setUploadEnabled(s.upload.provider !== 'none')
       const p = s.editorPrefs
       setFrame(p.frame)
       setColor(p.color)
       setWidth(p.width)
       setBlurRadius(p.blurRadius)
-      prefsLoadedRef.current = true
-    })
+      savedPrefsRef.current = JSON.stringify(p)
+      if (!size) return
+      const base = document.createElement('canvas')
+      if (!window.api.drawCapture(base)) return
+      baseRef.current = base
+      setPayload(size)
+      setBaseLoaded(true)
+    }
+    const unsubscribe = window.api.onCaptureAvailable(() => void load())
+    void load()
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [])
 
   // --- History helpers ------------------------------------------------------
@@ -105,9 +115,12 @@ export function Editor(): React.ReactElement {
   // --- Persist editor prefs -------------------------------------------------
   // Debounced so dragging a slider doesn't write the config on every tick.
   useEffect(() => {
-    if (!prefsLoadedRef.current) return
+    const prefs = { frame, color, width, blurRadius }
+    const json = JSON.stringify(prefs)
+    if (savedPrefsRef.current === null || savedPrefsRef.current === json) return
     const timer = setTimeout(() => {
-      void window.api.setEditorPrefs({ frame, color, width, blurRadius })
+      savedPrefsRef.current = json
+      void window.api.setEditorPrefs(prefs)
     }, 300)
     return () => clearTimeout(timer)
   }, [frame, color, width, blurRadius])
@@ -138,6 +151,11 @@ export function Editor(): React.ReactElement {
   useEffect(() => {
     if (baseLoaded) redraw()
   }, [baseLoaded, redraw])
+
+  // Main keeps the window hidden until the capture is on the canvas.
+  useEffect(() => {
+    if (baseLoaded) void window.api.captureDrawn()
+  }, [baseLoaded, payload])
 
   // --- Pointer mapping ------------------------------------------------------
   // Frame coordinates → base-image space (subtract the padding offset).

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import type { OverlayPayload } from '@shared/types'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { CaptureSize } from '@shared/types'
 import './overlay.css'
 
 interface Point {
@@ -24,48 +24,44 @@ function rectFromPoints(a: Point, b: Point): Rect {
 }
 
 export function Overlay(): React.ReactElement {
-  const [payload, setPayload] = useState<OverlayPayload | null>(null)
+  const [capture, setCapture] = useState<CaptureSize | null>(null)
   const [start, setStart] = useState<Point | null>(null)
   const [current, setCurrent] = useState<Point | null>(null)
-  const imgRef = useRef<HTMLImageElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
+  // The window is created ahead of time and shown before its image arrives:
+  // load on mount (covers a reload) and whenever main hands it a capture.
   useEffect(() => {
     document.body.classList.add('overlay')
-    void window.api.requestOverlayData().then((p) => {
-      if (p) setPayload(p)
-    })
-    return () => document.body.classList.remove('overlay')
+    const load = (): void => {
+      void window.api.loadCapture().then((size) => {
+        if (size) setCapture(size)
+      })
+    }
+    const unsubscribe = window.api.onCaptureAvailable(load)
+    load()
+    return () => {
+      unsubscribe()
+      document.body.classList.remove('overlay')
+    }
   }, [])
+
+  // Paint the frozen screen under the dimming, then let main focus the window.
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current
+    if (capture && canvas && window.api.drawCapture(canvas)) void window.api.captureDrawn()
+  }, [capture])
 
   const cancel = (): void => void window.api.overlayCancel()
 
-  // Crop the source image to the selected rect and hand it to the editor.
+  // Hand the selection to main, which crops it out of the full-resolution
+  // capture — it works even if the frozen image hasn't been drawn yet.
   const confirm = (rect: Rect): void => {
-    const img = imgRef.current
-    if (!img || rect.width < 4 || rect.height < 4) {
+    if (rect.width < 4 || rect.height < 4) {
       cancel()
       return
     }
-    const ratio = img.naturalWidth / img.clientWidth
-    const sx = Math.round(rect.left * ratio)
-    const sy = Math.round(rect.top * ratio)
-    const sw = Math.round(rect.width * ratio)
-    const sh = Math.round(rect.height * ratio)
-
-    const canvas = document.createElement('canvas')
-    canvas.width = sw
-    canvas.height = sh
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      cancel()
-      return
-    }
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
-    void window.api.overlaySelect({
-      imageDataUrl: canvas.toDataURL('image/png'),
-      width: sw,
-      height: sh
-    })
+    void window.api.overlaySelect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height })
   }
 
   useEffect(() => {
@@ -76,8 +72,6 @@ export function Overlay(): React.ReactElement {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
-
-  if (!payload) return <div className="overlay-loading" />
 
   const selection = start && current ? rectFromPoints(start, current) : null
 
@@ -91,11 +85,13 @@ export function Overlay(): React.ReactElement {
       onMouseMove={(e) => {
         if (start) setCurrent({ x: e.clientX, y: e.clientY })
       }}
-      onMouseUp={() => {
-        if (selection) confirm(selection)
+      onMouseUp={(e) => {
+        // Use the release point itself: the last mousemove may not have been
+        // rendered yet (React batches them), which would shrink the selection.
+        if (start) confirm(rectFromPoints(start, { x: e.clientX, y: e.clientY }))
       }}
     >
-      <img ref={imgRef} className="overlay-image" src={payload.imageDataUrl} draggable={false} />
+      <canvas ref={canvasRef} className="overlay-image" />
       {!selection && <div className="overlay-hint">Drag to select · Esc to cancel</div>}
       {selection && (
         <div

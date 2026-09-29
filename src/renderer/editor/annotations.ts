@@ -110,7 +110,7 @@ function drawArrow(ctx: CanvasRenderingContext2D, a: ShapeAnn): void {
 }
 
 // Blur the underlying base image within the annotation's rectangle.
-function drawBlur(ctx: CanvasRenderingContext2D, a: ShapeAnn, base: HTMLImageElement): void {
+function drawBlur(ctx: CanvasRenderingContext2D, a: ShapeAnn, base: CanvasImageSource): void {
   const x = Math.min(a.x1, a.x2)
   const y = Math.min(a.y1, a.y2)
   const w = Math.abs(a.x2 - a.x1)
@@ -129,7 +129,7 @@ function drawBlur(ctx: CanvasRenderingContext2D, a: ShapeAnn, base: HTMLImageEle
 export function drawAnnotation(
   ctx: CanvasRenderingContext2D,
   a: Annotation,
-  base: HTMLImageElement
+  base: CanvasImageSource
 ): void {
   ctx.save()
   ctx.lineWidth = a.width

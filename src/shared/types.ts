@@ -9,25 +9,27 @@ export interface DisplayInfo {
   bounds: { x: number; y: number; width: number; height: number }
 }
 
-// Payload handed to the overlay window so it can render the frozen screenshot
-// of the display the cursor is on and let the user drag a selection.
-export interface OverlayPayload {
-  display: DisplayInfo
-  // Full-resolution PNG data URL of the captured display.
-  imageDataUrl: string
+// A captured image as raw pixels: tightly packed BGRA rows, the order Chromium
+// keeps bitmaps in. Captures travel like this instead of as PNG data URLs, so
+// no image encode/decode sits between the shortcut and the window appearing.
+export interface RawImage {
+  width: number
+  height: number
+  bgra: Uint8Array
 }
 
-// A region selected by the user, expressed in the captured image's own pixels.
-export interface SelectionRect {
-  x: number
-  y: number
+// Pixel size of the capture a window holds; the pixels themselves stay in
+// the preload, which draws them straight into the page's canvas.
+export interface CaptureSize {
   width: number
   height: number
 }
 
-// Payload handed to the editor window: a cropped PNG ready for annotation.
-export interface EditorPayload {
-  imageDataUrl: string
+// A region selected in the overlay, in the overlay window's own coordinates
+// (DIP). The main process maps it onto the captured image's pixels.
+export interface SelectionRect {
+  x: number
+  y: number
   width: number
   height: number
 }
@@ -115,13 +117,16 @@ export const DEFAULT_SETTINGS: Settings = {
 }
 
 // IPC channel names, kept in one place so main/preload/renderer stay in sync.
-// All channels are renderer -> main invoke()s; windows pull their data on
-// mount (rather than main pushing it) to avoid a load/subscribe race.
+// All channels are renderer -> main invoke()s except `captureAvailable`, a
+// data-less main -> renderer ping. Capture windows are created ahead of time;
+// they pull their image on mount and again on that ping, so a ping sent
+// before the page subscribed is never lost.
 export const IPC = {
-  requestOverlay: 'overlay:request',
+  requestCapture: 'capture:request',
+  captureAvailable: 'capture:available',
+  captureDrawn: 'capture:drawn',
   overlaySelect: 'overlay:select',
   overlayCancel: 'overlay:cancel',
-  requestEditor: 'editor:request',
   editorCopy: 'editor:copy',
   editorSave: 'editor:save',
   editorUpload: 'editor:upload',
