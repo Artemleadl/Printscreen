@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, screen, shell } from 'electron'
 
 // Renderers only talk to main through the preload bridge, so they can run
 // fully sandboxed with context isolation.
@@ -30,12 +30,13 @@ function loadRoute(win: BrowserWindow, route: string): void {
   }
 }
 
-export function createOverlayWindow(bounds: Electron.Rectangle): BrowserWindow {
+// Capture windows are created hidden, ahead of time, and positioned when used.
+
+function createOverlayWindow(): BrowserWindow {
+  const { bounds } = screen.getPrimaryDisplay()
   const win = new BrowserWindow({
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
+    ...bounds,
+    show: false,
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -46,27 +47,27 @@ export function createOverlayWindow(bounds: Electron.Rectangle): BrowserWindow {
     fullscreenable: false,
     skipTaskbar: true,
     enableLargerThanScreen: true,
+    // It's shown before it takes focus: let the first click start a selection.
+    acceptFirstMouse: true,
     backgroundColor: '#00000000',
     webPreferences
   })
 
-  // Float above everything, including the macOS menu bar and the Dock.
+  // Float above everything, including the macOS menu bar and the Dock. The app
+  // is already a UI-element app (Dock hidden), so skip the process-type switch
+  // that would briefly hide every window, e.g. an open editor.
   win.setAlwaysOnTop(true, 'screen-saver')
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
 
   lockDown(win)
   loadRoute(win, 'overlay')
   return win
 }
 
-export function createEditorWindow(width: number, height: number): BrowserWindow {
-  // Keep the editor comfortably on-screen regardless of capture size.
-  const winWidth = Math.min(Math.max(width + 80, 720), 1400)
-  const winHeight = Math.min(Math.max(height + 160, 520), 900)
-
+function createEditorWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: winWidth,
-    height: winHeight,
+    width: 720,
+    height: 520,
     minWidth: 600,
     minHeight: 440,
     title: 'Snapshot Studio — Editor',
@@ -75,12 +76,85 @@ export function createEditorWindow(width: number, height: number): BrowserWindow
     webPreferences
   })
 
-  win.once('ready-to-show', () => {
-    win.show()
-    win.focus()
-  })
   lockDown(win)
   loadRoute(win, 'editor')
+  return win
+}
+
+// Size the editor to the capture, keep it comfortably on-screen, and center
+// it on the display the capture came from.
+export function placeEditorWindow(win: BrowserWindow, width: number, height: number): void {
+  const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  const w = Math.min(Math.max(width + 80, 720), 1400, workArea.width)
+  const h = Math.min(Math.max(height + 160, 520), 900, workArea.height)
+  win.setBounds({
+    x: Math.round(workArea.x + (workArea.width - w) / 2),
+    y: Math.round(workArea.y + (workArea.height - h) / 2),
+    width: w,
+    height: h
+  })
+}
+
+// --- Spare capture windows ---------------------------------------------------
+// Creating a window and starting its renderer takes hundreds of ms (seconds in
+// dev, where the page loads from the Vite server). Keep one hidden, loaded
+// window per kind ready, so a capture only has to hand it the image.
+
+export type CaptureWindowKind = 'overlay' | 'editor'
+
+// Delay before preparing the next spare, so its renderer startup doesn't
+// compete with the capture that just took one.
+const SPARE_REFILL_DELAY_MS = 1000
+
+const spares = new Map<CaptureWindowKind, Promise<BrowserWindow>>()
+let quitting = false
+app.on('before-quit', () => {
+  quitting = true
+})
+
+// Resolves once the page has loaded. Always settles, so a capture waiting on
+// a spare can't hang on a window that never finishes loading.
+function loadCaptureWindow(kind: CaptureWindowKind): Promise<BrowserWindow> {
+  const win = kind === 'overlay' ? createOverlayWindow() : createEditorWindow()
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const fail = (reason: string): void => {
+      if (settled) return
+      settled = true
+      if (!win.isDestroyed()) win.destroy()
+      reject(new Error(`Capture window failed to load: ${reason}`))
+    }
+    win.webContents.once('did-finish-load', () => {
+      settled = true
+      resolve(win)
+    })
+    win.webContents.once('did-fail-load', (_e, _code, description) => fail(description))
+    win.webContents.once('render-process-gone', (_e, details) => fail(details.reason))
+    win.once('closed', () => fail('window closed'))
+  })
+}
+
+export function prepareCaptureWindow(kind: CaptureWindowKind): void {
+  if (quitting || spares.has(kind)) return
+  const spare = loadCaptureWindow(kind)
+  spares.set(kind, spare)
+  // A spare that failed to load is dropped; the next take creates a window.
+  spare.catch(() => {
+    if (spares.get(kind) === spare) spares.delete(kind)
+  })
+}
+
+// Hand out the ready spare (or a fresh window if there is none) and prepare
+// the next one shortly after.
+export async function takeCaptureWindow(kind: CaptureWindowKind): Promise<BrowserWindow> {
+  const spare = spares.get(kind)
+  spares.delete(kind)
+  let win = spare ? await spare.catch(() => null) : null
+  if (!win || win.isDestroyed() || win.webContents.isCrashed()) {
+    if (win && !win.isDestroyed()) win.destroy()
+    win = await loadCaptureWindow(kind)
+  }
+  setTimeout(() => prepareCaptureWindow(kind), SPARE_REFILL_DELAY_MS)
   return win
 }
 

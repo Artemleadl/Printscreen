@@ -15,25 +15,46 @@ import {
 import {
   IPC,
   type CaptureMode,
-  type EditorPayload,
   type EditorPrefs,
-  type OverlayPayload,
+  type RawImage,
   type SaveResult,
+  type SelectionRect,
   type Settings,
   type UploadResult
 } from '../shared/types'
 import { getSettings, saveEditorPrefs, saveSettings } from './store'
-import { captureCursorDisplay, hasScreenAccess } from './capture'
+import {
+  captureCursorDisplay,
+  cropCapture,
+  hasScreenAccess,
+  screenAccessStatus,
+  toRawImage,
+  type Capture
+} from './capture'
 import { uploadImage } from './uploader'
-import { createEditorWindow, createOverlayWindow, createSettingsWindow } from './windows'
+import {
+  createSettingsWindow,
+  placeEditorWindow,
+  prepareCaptureWindow,
+  takeCaptureWindow
+} from './windows'
 
 let tray: Tray | null = null
 let overlayWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
+// Bumped by every capture. A capture that finds it changed after grabbing
+// the screen was superseded by a newer shortcut press and drops its result.
+let captureSeq = 0
 
-// Each capture window pulls its payload on mount, keyed by webContents id.
-const editorPayloads = new Map<number, EditorPayload>()
-const overlayPayloads = new Map<number, OverlayPayload>()
+// The capture each overlay/editor window shows, keyed by webContents id.
+const captures = new Map<number, Capture>()
+// Pending "capture is drawn" acknowledgements, keyed by webContents id.
+const drawnWaiters = new Map<number, (drawn: boolean) => void>()
+
+// How long a just-shown overlay gets to put its first frame on screen before
+// it is sent the capture: receiving and drawing a multi-MB image keeps its
+// renderer busy and would hold that frame back (measured: ~0.4s later).
+const OVERLAY_FIRST_FRAME_MS = 100
 
 function dataUrlToBuffer(dataUrl: string): Buffer {
   const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
@@ -48,15 +69,84 @@ function timestampName(ext = 'png'): string {
 
 // --- Capture orchestration -------------------------------------------------
 
-function openEditor(payload: EditorPayload): void {
-  const settings = getSettings()
-  if (settings.copyOnCapture) {
-    clipboard.writeImage(nativeImage.createFromDataURL(payload.imageDataUrl))
-  }
-  const win = createEditorWindow(payload.width, payload.height)
+// Dev-only log of what capture does and where its time goes on this machine.
+function devLog(message: string): void {
+  if (!app.isPackaged) console.log(`[capture] ${message}`)
+}
+
+function logTiming(event: string, since: number): void {
+  devLog(`${event} after ${Math.round(performance.now() - since)}ms`)
+}
+
+// Resolves true once the window's page reports the capture is on its canvas;
+// false if the window closes first or the report doesn't come in time, so a
+// lost message can't keep the window hidden for good.
+function whenDrawn(win: BrowserWindow, timeoutMs: number): Promise<boolean> {
   const id = win.webContents.id
-  editorPayloads.set(id, payload)
-  win.on('closed', () => editorPayloads.delete(id))
+  return new Promise((resolve) => {
+    const done = (drawn: boolean): void => {
+      clearTimeout(timer)
+      drawnWaiters.delete(id)
+      resolve(drawn)
+    }
+    const timer = setTimeout(() => done(false), timeoutMs)
+    drawnWaiters.set(id, done)
+  })
+}
+
+// Hand a (pre-created) window its capture: register it for the page to pull,
+// then ping the page, optionally after a delay. Resolves once the page has
+// drawn it (see whenDrawn).
+function deliverCapture(win: BrowserWindow, capture: Capture, pingDelayMs = 0): Promise<boolean> {
+  const id = win.webContents.id
+  captures.set(id, capture)
+  win.on('closed', () => {
+    captures.delete(id)
+    drawnWaiters.get(id)?.(false)
+  })
+  const drawn = whenDrawn(win, 1000 + pingDelayMs)
+  setTimeout(() => {
+    if (!win.isDestroyed()) win.webContents.send(IPC.captureAvailable)
+  }, pingDelayMs)
+  return drawn
+}
+
+async function openEditor(capture: Capture, since: number): Promise<void> {
+  const win = await takeCaptureWindow('editor')
+  const { width, height } = capture.image.getSize()
+  placeEditorWindow(win, width, height)
+  // Show it once the image is on the canvas, so it never flashes empty.
+  const drawn = await deliverCapture(win, capture)
+  if (win.isDestroyed()) return
+  win.show()
+  win.focus()
+  logTiming(drawn ? 'editor shown' : 'editor shown before its image was drawn', since)
+  if (getSettings().copyOnCapture) clipboard.writeImage(capture.image)
+}
+
+// Region mode: cover the display so the user can drag a selection over the
+// frozen screenshot.
+async function openOverlay(capture: Capture, since: number): Promise<void> {
+  const win = await takeCaptureWindow('overlay')
+  overlayWindow = win
+  win.on('closed', () => {
+    if (overlayWindow === win) overlayWindow = null
+  })
+  win.setBounds(capture.display.bounds)
+  // Show it right away — its dimming and crosshair are already painted, and
+  // the frozen image matches what's on screen, so it can fill in underneath a
+  // moment later. Take focus only after that, so the app below doesn't
+  // visibly lose focus (grey title bar, selection) before it's covered.
+  win.showInactive()
+  logTiming('overlay shown', since)
+  // The capture is registered right away, so a selection made meanwhile works.
+  const drawn = await deliverCapture(win, capture, OVERLAY_FIRST_FRAME_MS)
+  logTiming(drawn ? 'overlay image drawn' : 'overlay closed or timed out before its image was drawn', since)
+  if (win.isDestroyed()) return
+  // show() (not just focus()) so the app is activated even though the user is
+  // in another app — otherwise macOS may leave the overlay without keyboard.
+  win.show()
+  win.focus()
 }
 
 const SCREEN_RECORDING_SETTINGS_URL =
@@ -77,38 +167,31 @@ async function showScreenAccessHelp(): Promise<void> {
   if (response === 0) void shell.openExternal(SCREEN_RECORDING_SETTINGS_URL)
 }
 
+function showCaptureError(err: unknown): void {
+  dialog.showErrorBox('Capture failed', err instanceof Error ? err.message : String(err))
+}
+
 async function startCapture(mode: CaptureMode): Promise<void> {
+  devLog(`${mode}: started, screen recording access: ${screenAccessStatus()}`)
   if (!hasScreenAccess()) {
     await showScreenAccessHelp()
     return
   }
+  const seq = ++captureSeq
   try {
-    if (mode === 'fullscreen') {
-      const { imageDataUrl, display } = await captureCursorDisplay()
-      openEditor({
-        imageDataUrl,
-        width: Math.round(display.bounds.width * display.scaleFactor),
-        height: Math.round(display.bounds.height * display.scaleFactor)
-      })
-      return
-    }
-
-    // Region mode: freeze the cursor display and let the user drag a selection.
+    // A new capture replaces an open overlay; hide it first so it isn't in the shot.
     if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.hide()
       overlayWindow.close()
     }
-    const payload = await captureCursorDisplay()
-    overlayWindow = createOverlayWindow(payload.display.bounds)
-    const win = overlayWindow
-    const id = win.webContents.id
-    overlayPayloads.set(id, payload)
-    win.webContents.once('did-finish-load', () => win.focus())
-    win.on('closed', () => {
-      overlayPayloads.delete(id)
-      if (overlayWindow === win) overlayWindow = null
-    })
+    const started = performance.now()
+    const capture = await captureCursorDisplay()
+    if (seq !== captureSeq) return
+    logTiming(`${mode}: screen grabbed`, started)
+    if (mode === 'fullscreen') await openEditor(capture, started)
+    else await openOverlay(capture, started)
   } catch (err) {
-    dialog.showErrorBox('Capture failed', err instanceof Error ? err.message : String(err))
+    showCaptureError(err)
   }
 }
 
@@ -119,9 +202,12 @@ function registerShortcuts(settings: Settings): void {
   const bind = (accel: string, mode: CaptureMode) => {
     if (!accel) return
     try {
-      globalShortcut.register(accel, () => void startCapture(mode))
+      const ok = globalShortcut.register(accel, () => void startCapture(mode))
+      // false: another app already owns this shortcut.
+      devLog(`${mode} shortcut ${accel}: ${ok ? 'registered' : 'NOT registered (taken by another app)'}`)
     } catch {
-      // Ignore invalid accelerators; the user can fix them in Settings.
+      // Invalid accelerator; the user can fix it in Settings.
+      devLog(`${mode} shortcut ${accel}: invalid`)
     }
   }
   bind(settings.shortcuts.region, 'region')
@@ -196,7 +282,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.setSettings, (_e, next: Settings): Settings => {
     const saved = saveSettings(next)
     registerShortcuts(saved)
-    app.setLoginItemSettings({ openAtLogin: saved.launchAtLogin })
+    syncLoginItem(saved.launchAtLogin)
     return saved
   })
 
@@ -209,16 +295,27 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.triggerCapture, (_e, mode: CaptureMode) => startCapture(mode))
 
-  ipcMain.handle(IPC.requestOverlay, (e): OverlayPayload | null => overlayPayloads.get(e.sender.id) ?? null)
-  ipcMain.handle(IPC.requestEditor, (e): EditorPayload | null => editorPayloads.get(e.sender.id) ?? null)
-
-  ipcMain.handle(IPC.overlaySelect, (_e, payload: EditorPayload) => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close()
-    openEditor(payload)
+  ipcMain.handle(IPC.requestCapture, (e): RawImage | null => {
+    const capture = captures.get(e.sender.id)
+    return capture ? toRawImage(capture.image) : null
   })
 
-  ipcMain.handle(IPC.overlayCancel, () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close()
+  ipcMain.handle(IPC.captureDrawn, (e) => drawnWaiters.get(e.sender.id)?.(true))
+
+  ipcMain.handle(IPC.overlaySelect, async (e, rect: SelectionRect) => {
+    const started = performance.now()
+    const capture = captures.get(e.sender.id)
+    BrowserWindow.fromWebContents(e.sender)?.close()
+    if (!capture) return
+    try {
+      await openEditor({ ...capture, image: cropCapture(capture, rect) }, started)
+    } catch (err) {
+      showCaptureError(err)
+    }
+  })
+
+  ipcMain.handle(IPC.overlayCancel, (e) => {
+    BrowserWindow.fromWebContents(e.sender)?.close()
   })
 
   ipcMain.handle(IPC.editorCopy, (_e, dataUrl: string) => {
@@ -248,7 +345,15 @@ function registerIpc(): void {
 
 // --- Lifecycle -------------------------------------------------------------
 
+// Login items only make sense for the installed app; in dev macOS refuses them.
+function syncLoginItem(openAtLogin: boolean): void {
+  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin })
+}
+
 if (!app.requestSingleInstanceLock()) {
+  // Say why we quit: otherwise the already running copy (maybe an older
+  // build) silently answers the shortcuts instead of this one.
+  console.log('Snapshot Studio is already running — quit it from the menu bar (◉ → Quit) first.')
   app.quit()
 } else {
   app.whenReady().then(() => {
@@ -258,7 +363,10 @@ if (!app.requestSingleInstanceLock()) {
     buildTray()
     const settings = getSettings()
     registerShortcuts(settings)
-    app.setLoginItemSettings({ openAtLogin: settings.launchAtLogin })
+    syncLoginItem(settings.launchAtLogin)
+    // Have the capture windows loaded before the first shortcut press.
+    prepareCaptureWindow('overlay')
+    prepareCaptureWindow('editor')
   })
 
   // Keep running in the background as a menu-bar app when all windows close.

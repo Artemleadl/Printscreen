@@ -1,9 +1,3 @@
-.overlay-loading {
-  width: 100%;
-  height: 100%;
-  background: transparent;
-}
-
 .overlay-root {
   position: fixed;
   inset: 0;
@@ -14,10 +8,11 @@
 .overlay-image {
   position: absolute;
   inset: 0;
+  /* Below the dimming and the selection, which follow it in the stacking order. */
+  z-index: -1;
   width: 100%;
   height: 100%;
   pointer-events: none;
-  -webkit-user-drag: none;
 }
 
 /* Before a selection exists, dim the whole frozen screenshot. */

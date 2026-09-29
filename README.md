@@ -57,7 +57,7 @@ npm run dist:mac
 |---|---|
 | Capture region | `⌘⇧1` or menu-bar → Capture Region |
 | Capture full screen | `⌘⇧2` or menu-bar → Capture Fullscreen |
-| Copy result | `⌘C` |
+| Copy result and close the editor | `⌘C` |
 | Save as PNG | `⌘S` or click **Save** |
 | Upload & copy link | Click **Upload** (configure provider in Settings first) |
 | Undo / Redo | `⌘Z` / `⌘⇧Z` |
@@ -108,6 +108,7 @@ printscreen/
 - Built with **Electron 36**, **electron-vite**, **React 18**, **TypeScript**.
 - State is persisted via **electron-store**.
 - If launched from inside another Electron-based tool (VS Code, Claude), `ELECTRON_RUN_AS_NODE=1` may be set in the environment. Always launch with `env -u ELECTRON_RUN_AS_NODE npm run dev`.
+- In development, every capture logs its timings to the terminal (`[capture] region: screen grabbed after …ms`, `overlay shown`, `editor shown`) — handy for spotting what is slow on a given machine.
 
 ---
 
@@ -164,7 +165,7 @@ npm run dist:mac
 |---|---|
 | Захват области | `⌘⇧1` или строка меню → Capture Region |
 | Захват полного экрана | `⌘⇧2` или строка меню → Capture Fullscreen |
-| Копировать результат | `⌘C` |
+| Скопировать результат и закрыть редактор | `⌘C` |
 | Сохранить PNG | `⌘S` или кнопка **Save** |
 | Загрузить и скопировать ссылку | Кнопка **Upload** (настройте провайдер в Settings) |
 | Отмена / Повтор | `⌘Z` / `⌘⇧Z` |
@@ -215,6 +216,7 @@ printscreen/
 - Стек: **Electron 36**, **electron-vite**, **React 18**, **TypeScript**.
 - Настройки хранятся через **electron-store** (JSON в папке данных приложения).
 - При запуске из другого Electron-приложения (VS Code, Claude) в окружении может быть установлена переменная `ELECTRON_RUN_AS_NODE=1`. Всегда запускайте через `env -u ELECTRON_RUN_AS_NODE npm run dev`.
+- В режиме разработки каждый захват пишет тайминги в терминал (`[capture] region: screen grabbed after …ms`, `overlay shown`, `editor shown`) — так видно, что именно тормозит на конкретной машине.
 
 ---
 

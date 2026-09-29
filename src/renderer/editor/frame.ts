@@ -69,7 +69,7 @@ function paintBackground(
 // area match the base image's pixel space.
 export function composeFrame(
   ctx: CanvasRenderingContext2D,
-  base: HTMLImageElement,
+  base: CanvasImageSource,
   annotations: Annotation[],
   draft: Annotation | null,
   frame: Frame,
