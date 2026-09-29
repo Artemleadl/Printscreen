@@ -23,7 +23,14 @@ import {
   type UploadResult
 } from '../shared/types'
 import { getSettings, saveEditorPrefs, saveSettings } from './store'
-import { captureCursorDisplay, cropCapture, hasScreenAccess, toRawImage, type Capture } from './capture'
+import {
+  captureCursorDisplay,
+  cropCapture,
+  hasScreenAccess,
+  screenAccessStatus,
+  toRawImage,
+  type Capture
+} from './capture'
 import { uploadImage } from './uploader'
 import {
   createSettingsWindow,
@@ -62,9 +69,13 @@ function timestampName(ext = 'png'): string {
 
 // --- Capture orchestration -------------------------------------------------
 
-// Dev-only log of where capture time goes on this machine.
+// Dev-only log of what capture does and where its time goes on this machine.
+function devLog(message: string): void {
+  if (!app.isPackaged) console.log(`[capture] ${message}`)
+}
+
 function logTiming(event: string, since: number): void {
-  if (!app.isPackaged) console.log(`[capture] ${event} after ${Math.round(performance.now() - since)}ms`)
+  devLog(`${event} after ${Math.round(performance.now() - since)}ms`)
 }
 
 // Resolves true once the window's page reports the capture is on its canvas;
@@ -161,6 +172,7 @@ function showCaptureError(err: unknown): void {
 }
 
 async function startCapture(mode: CaptureMode): Promise<void> {
+  devLog(`${mode}: started, screen recording access: ${screenAccessStatus()}`)
   if (!hasScreenAccess()) {
     await showScreenAccessHelp()
     return
@@ -190,9 +202,12 @@ function registerShortcuts(settings: Settings): void {
   const bind = (accel: string, mode: CaptureMode) => {
     if (!accel) return
     try {
-      globalShortcut.register(accel, () => void startCapture(mode))
+      const ok = globalShortcut.register(accel, () => void startCapture(mode))
+      // false: another app already owns this shortcut.
+      devLog(`${mode} shortcut ${accel}: ${ok ? 'registered' : 'NOT registered (taken by another app)'}`)
     } catch {
-      // Ignore invalid accelerators; the user can fix them in Settings.
+      // Invalid accelerator; the user can fix it in Settings.
+      devLog(`${mode} shortcut ${accel}: invalid`)
     }
   }
   bind(settings.shortcuts.region, 'region')

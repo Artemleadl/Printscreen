@@ -11,10 +11,14 @@ export interface Capture {
 // 'not-determined' counts as allowed: the first capture triggers the system
 // prompt. On other platforms there is no such permission, so this is true.
 export function hasScreenAccess(): boolean {
-  if (process.platform !== 'darwin') return true
-  // 'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown'
-  const status = systemPreferences.getMediaAccessStatus('screen')
+  const status = screenAccessStatus()
   return status !== 'denied' && status !== 'restricted'
+}
+
+// 'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown' on macOS.
+export function screenAccessStatus(): string {
+  if (process.platform !== 'darwin') return 'granted'
+  return systemPreferences.getMediaAccessStatus('screen')
 }
 
 function displayToInfo(display: Electron.Display): DisplayInfo {
