@@ -57,7 +57,7 @@ npm run dist:mac
 |---|---|
 | Capture region | `⌘⇧1` or menu-bar → Capture Region |
 | Capture full screen | `⌘⇧2` or menu-bar → Capture Fullscreen |
-| Copy result | `⌘C` |
+| Copy result and close the editor | `⌘C` |
 | Save as PNG | `⌘S` or click **Save** |
 | Upload & copy link | Click **Upload** (configure provider in Settings first) |
 | Undo / Redo | `⌘Z` / `⌘⇧Z` |
@@ -165,7 +165,7 @@ npm run dist:mac
 |---|---|
 | Захват области | `⌘⇧1` или строка меню → Capture Region |
 | Захват полного экрана | `⌘⇧2` или строка меню → Capture Fullscreen |
-| Копировать результат | `⌘C` |
+| Скопировать результат и закрыть редактор | `⌘C` |
 | Сохранить PNG | `⌘S` или кнопка **Save** |
 | Загрузить и скопировать ссылку | Кнопка **Upload** (настройте провайдер в Settings) |
 | Отмена / Повтор | `⌘Z` / `⌘⇧Z` |

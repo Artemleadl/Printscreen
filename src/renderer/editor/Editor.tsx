@@ -354,8 +354,9 @@ export function Editor(): React.ReactElement {
         return
       }
       if (meta && e.key.toLowerCase() === 'c') {
+        // Copy and done: the usual end of a quick capture.
         e.preventDefault()
-        void doCopy()
+        void doCopy().then(() => window.api.editorClose())
         return
       }
       if (meta && e.key.toLowerCase() === 's') {
