@@ -70,7 +70,13 @@ async function uploadSupabase(
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
-    throw new Error(`Supabase upload failed: ${res.status} ${detail}`)
+    // Uploading with the anon key only works when the bucket's storage policy
+    // allows anonymous inserts; say so instead of surfacing a bare 403.
+    const hint =
+      res.status === 400 || res.status === 401 || res.status === 403
+        ? ` — check that bucket "${cfg.bucket}" exists, is public and has an INSERT policy for the anon role.`
+        : ''
+    throw new Error(`Supabase upload failed: ${res.status} ${detail}${hint}`)
   }
   return {
     url: `${base}/storage/v1/object/public/${cfg.bucket}/${encodeURIComponent(objectPath)}`

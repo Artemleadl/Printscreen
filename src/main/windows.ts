@@ -1,7 +1,24 @@
 import { join } from 'node:path'
 import { BrowserWindow, shell } from 'electron'
 
-const preload = join(__dirname, '../preload/index.js')
+// Renderers only talk to main through the preload bridge, so they can run
+// fully sandboxed with context isolation.
+const webPreferences: Electron.WebPreferences = {
+  preload: join(__dirname, '../preload/index.js'),
+  sandbox: true,
+  contextIsolation: true,
+  nodeIntegration: false
+}
+
+// Windows only ever show our own renderer: block in-page navigation and
+// send any window.open / target=_blank link to the default browser instead.
+function lockDown(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (e) => e.preventDefault())
+}
 
 // Load the renderer at a given hash route, in dev or production.
 function loadRoute(win: BrowserWindow, route: string): void {
@@ -30,13 +47,14 @@ export function createOverlayWindow(bounds: Electron.Rectangle): BrowserWindow {
     skipTaskbar: true,
     enableLargerThanScreen: true,
     backgroundColor: '#00000000',
-    webPreferences: { preload, sandbox: false }
+    webPreferences
   })
 
   // Float above everything, including the macOS menu bar and the Dock.
   win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
+  lockDown(win)
   loadRoute(win, 'overlay')
   return win
 }
@@ -54,13 +72,14 @@ export function createEditorWindow(width: number, height: number): BrowserWindow
     title: 'Snapshot Studio — Editor',
     backgroundColor: '#1e1e24',
     show: false,
-    webPreferences: { preload, sandbox: false }
+    webPreferences
   })
 
   win.once('ready-to-show', () => {
     win.show()
     win.focus()
   })
+  lockDown(win)
   loadRoute(win, 'editor')
   return win
 }
@@ -73,15 +92,11 @@ export function createSettingsWindow(): BrowserWindow {
     backgroundColor: '#1e1e24',
     resizable: false,
     show: false,
-    webPreferences: { preload, sandbox: false }
-  })
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
-    return { action: 'deny' }
+    webPreferences
   })
 
   win.once('ready-to-show', () => win.show())
+  lockDown(win)
   loadRoute(win, 'settings')
   return win
 }

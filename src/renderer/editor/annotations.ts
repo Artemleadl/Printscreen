@@ -54,6 +54,28 @@ export interface StepAnn extends Common {
 
 export type Annotation = ShapeAnn | StrokeAnn | TextAnn | StepAnn
 
+const LINE_HEIGHT = 1.25
+
+function textFont(fontSize: number): string {
+  return `600 ${fontSize}px -apple-system, sans-serif`
+}
+
+// Shared offscreen context for measuring text outside of a draw call.
+let measureCtx: CanvasRenderingContext2D | null = null
+
+function measureText(a: TextAnn): { w: number; h: number } {
+  const lines = a.text.split('\n')
+  measureCtx ??= document.createElement('canvas').getContext('2d')
+  let w = 0
+  if (measureCtx) {
+    measureCtx.font = textFont(a.fontSize)
+    for (const line of lines) w = Math.max(w, measureCtx.measureText(line).width)
+  } else {
+    w = Math.max(...lines.map((l) => l.length)) * a.fontSize * 0.6
+  }
+  return { w, h: lines.length * a.fontSize * LINE_HEIGHT }
+}
+
 export function newId(): string {
   return Math.random().toString(36).slice(2, 10)
 }
@@ -159,13 +181,13 @@ export function drawAnnotation(
       break
     }
     case 'text': {
-      ctx.font = `600 ${a.fontSize}px -apple-system, sans-serif`
+      ctx.font = textFont(a.fontSize)
       ctx.textBaseline = 'top'
       // Subtle shadow keeps text legible over busy screenshots.
       ctx.shadowColor = 'rgba(0,0,0,0.55)'
       ctx.shadowBlur = 3
       for (const [i, line] of a.text.split('\n').entries()) {
-        ctx.fillText(line, a.x, a.y + i * a.fontSize * 1.25)
+        ctx.fillText(line, a.x, a.y + i * a.fontSize * LINE_HEIGHT)
       }
       break
     }
@@ -208,7 +230,7 @@ export function bounds(a: Annotation): { x: number; y: number; w: number; h: num
       return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY }
     }
     case 'text':
-      return { x: a.x, y: a.y, w: a.text.length * a.fontSize * 0.6, h: a.fontSize * 1.3 }
+      return { x: a.x, y: a.y, ...measureText(a) }
     case 'step': {
       const r = Math.max(13, a.width * 4)
       return { x: a.x - r, y: a.y - r, w: r * 2, h: r * 2 }

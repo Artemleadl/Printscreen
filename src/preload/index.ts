@@ -3,6 +3,7 @@ import {
   IPC,
   type CaptureMode,
   type EditorPayload,
+  type EditorPrefs,
   type OverlayPayload,
   type SaveResult,
   type Settings,
@@ -12,6 +13,8 @@ import {
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke(IPC.getSettings),
   setSettings: (next: Settings): Promise<Settings> => ipcRenderer.invoke(IPC.setSettings, next),
+  setEditorPrefs: (prefs: EditorPrefs): Promise<EditorPrefs> =>
+    ipcRenderer.invoke(IPC.setEditorPrefs, prefs),
   pickSaveDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickSaveDirectory),
   triggerCapture: (mode: CaptureMode): Promise<void> =>
     ipcRenderer.invoke(IPC.triggerCapture, mode),
