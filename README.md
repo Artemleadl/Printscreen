@@ -48,7 +48,13 @@ Go to **System Settings → Privacy & Security → Screen Recording**, find **El
 
 ```bash
 npm run dist:mac
-# Output: dist/Snapshot Studio-0.1.0.dmg
+# Output: dist/Snapshot Studio-0.1.0-arm64.dmg (or -x64 on Intel)
+```
+
+Without a Developer ID certificate the app is ad-hoc signed (`scripts/adhoc-sign.cjs`). macOS ties the Screen Recording permission to that exact build, so after installing a new build reset it and grant it again when asked:
+
+```bash
+tccutil reset ScreenCapture com.snapshotstudio.app
 ```
 
 ### Usage
@@ -156,7 +162,13 @@ env -u ELECTRON_RUN_AS_NODE npm run dev
 
 ```bash
 npm run dist:mac
-# Результат: dist/Snapshot Studio-0.1.0.dmg
+# Результат: dist/Snapshot Studio-0.1.0-arm64.dmg (или -x64 на Intel)
+```
+
+Без сертификата Developer ID приложение подписывается локально (ad-hoc, `scripts/adhoc-sign.cjs`). macOS привязывает разрешение «Запись экрана» к конкретной сборке, поэтому после установки новой сборки сбросьте его и выдайте заново, когда macOS спросит:
+
+```bash
+tccutil reset ScreenCapture com.snapshotstudio.app
 ```
 
 ### Использование
