@@ -6,6 +6,8 @@ directories:
 files:
   - out/**/*
   - package.json
+# Signs the app (local certificate or ad-hoc) when no Developer ID certificate is available.
+afterPack: scripts/sign-mac.cjs
 mac:
   category: public.app-category.productivity
   target:

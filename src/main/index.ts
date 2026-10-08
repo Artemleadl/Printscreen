@@ -27,6 +27,7 @@ import {
   captureCursorDisplay,
   cropCapture,
   hasScreenAccess,
+  registerForScreenAccess,
   screenAccessStatus,
   toRawImage,
   type Capture
@@ -155,6 +156,8 @@ const SCREEN_RECORDING_SETTINGS_URL =
 // Without Screen Recording access macOS returns only the wallpaper, so tell
 // the user how to fix it instead of opening a useless capture.
 async function showScreenAccessHelp(): Promise<void> {
+  // Make sure the app is listed in System Settings before sending the user there.
+  await registerForScreenAccess()
   const { response } = await dialog.showMessageBox({
     type: 'warning',
     message: 'Snapshot Studio needs Screen Recording permission',

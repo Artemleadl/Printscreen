@@ -44,12 +44,20 @@ env -u ELECTRON_RUN_AS_NODE npm run dev
 On the first launch macOS will ask for **Screen Recording** permission.  
 Go to **System Settings → Privacy & Security → Screen Recording**, find **Electron** / **Snapshot Studio**, enable it, then restart the app.
 
-### Build a distributable `.dmg`
+### Install on your Mac (one command)
 
 ```bash
-npm run dist:mac
-# Output: dist/Snapshot Studio-0.1.0.dmg
+npm run install:mac
 ```
+
+Builds the app, replaces `/Applications/Snapshot Studio.app` and starts it. Run the same command after every update.
+
+The first run creates a local code-signing certificate, **Snapshot Studio Local**, in your login keychain. Every build is signed with it, so macOS keeps the Screen Recording permission across updates: you grant it once. On that first run:
+
+- macOS may ask whether `codesign` may use the key — choose **Always Allow**;
+- on the first capture macOS asks for Screen Recording — enable **Snapshot Studio**, then restart the app.
+
+To only build a `.dmg` (output: `dist/Snapshot Studio-0.1.0-arm64.dmg`, or `-x64` on Intel), run `npm run dist:mac`.
 
 ### Usage
 
@@ -152,12 +160,20 @@ env -u ELECTRON_RUN_AS_NODE npm run dev
 При первом запуске macOS попросит разрешение на **Запись экрана**.  
 Откройте **Системные настройки → Конфиденциальность и безопасность → Запись экрана**, найдите **Electron** / **Snapshot Studio**, включите и перезапустите приложение.
 
-### Сборка `.dmg`
+### Установка на Mac (одна команда)
 
 ```bash
-npm run dist:mac
-# Результат: dist/Snapshot Studio-0.1.0.dmg
+npm run install:mac
 ```
+
+Собирает приложение, заменяет `/Applications/Snapshot Studio.app` и запускает его. После каждого обновления — та же команда.
+
+При первом запуске создаётся локальный сертификат подписи **Snapshot Studio Local** в связке ключей «Вход». Им подписывается каждая сборка, поэтому macOS сохраняет разрешение «Запись экрана» между обновлениями: выдать его нужно один раз. В первый раз:
+
+- macOS может спросить, можно ли `codesign` использовать ключ, — выберите **«Разрешать всегда»**;
+- при первом снимке macOS спросит про запись экрана — включите **Snapshot Studio** и перезапустите приложение.
+
+Только собрать `.dmg` (результат: `dist/Snapshot Studio-0.1.0-arm64.dmg`, на Intel — `-x64`): `npm run dist:mac`.
 
 ### Использование
 

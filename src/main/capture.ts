@@ -15,6 +15,14 @@ export function hasScreenAccess(): boolean {
   return status !== 'denied' && status !== 'restricted'
 }
 
+// Touch the screen-capture API once so macOS registers the app for Screen
+// Recording: only then does it show up in System Settings to be enabled
+// (macOS has no direct "ask for screen access" call).
+export async function registerForScreenAccess(): Promise<void> {
+  if (process.platform !== 'darwin') return
+  await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => {})
+}
+
 // 'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown' on macOS.
 export function screenAccessStatus(): string {
   if (process.platform !== 'darwin') return 'granted'

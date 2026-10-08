@@ -13,7 +13,8 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "dist:mac": "electron-vite build && electron-builder --mac"
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "install:mac": "bash scripts/install-mac.sh"
   },
   "dependencies": {
     "electron-store": "^8.2.0"
