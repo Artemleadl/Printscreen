@@ -70,11 +70,13 @@ interface Props {
   setFrame: (f: Frame) => void
 }
 
-export function FrameBar({ frame, setFrame }: Props): React.ReactElement {
+// Background, padding and corner radius around the screenshot; shown in the
+// toolbar's "Background" popover.
+export function FramePanel({ frame, setFrame }: Props): React.ReactElement {
   return (
-    <div className="framebar">
-      <div className="toolbar-group">
-        <span className="framebar-label">Background</span>
+    <div className="frame-panel">
+      <div className="panel-label">Background</div>
+      <div className="bg-grid">
         {PRESETS.map((p) => (
           <button
             key={p.label}
@@ -88,8 +90,8 @@ export function FrameBar({ frame, setFrame }: Props): React.ReactElement {
         ))}
       </div>
 
-      <div className="toolbar-group slider-group">
-        <span className="framebar-label">Padding</span>
+      <label className="panel-slider">
+        <span className="panel-label">Padding</span>
         <input
           type="range"
           min={0}
@@ -98,10 +100,10 @@ export function FrameBar({ frame, setFrame }: Props): React.ReactElement {
           onChange={(e) => setFrame({ ...frame, padding: Number(e.target.value) })}
         />
         <span className="slider-value">{frame.padding}</span>
-      </div>
+      </label>
 
-      <div className="toolbar-group slider-group">
-        <span className="framebar-label">Corner radius</span>
+      <label className="panel-slider">
+        <span className="panel-label">Corners</span>
         <input
           type="range"
           min={0}
@@ -110,7 +112,7 @@ export function FrameBar({ frame, setFrame }: Props): React.ReactElement {
           onChange={(e) => setFrame({ ...frame, radius: Number(e.target.value) })}
         />
         <span className="slider-value">{frame.radius}</span>
-      </div>
+      </label>
     </div>
   )
 }

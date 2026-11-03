@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import { desktopCapturer, screen, systemPreferences, type NativeImage } from 'electron'
 import type { DisplayInfo, RawImage, SelectionRect } from '../shared/types'
 
@@ -5,6 +6,53 @@ export interface Capture {
   display: DisplayInfo
   // Full-resolution image of the display, in physical pixels.
   image: NativeImage
+  // App windows on screen at capture time (global DIP), front to back, for
+  // the overlay's window mode. Only listed on macOS.
+  windows?: Promise<SelectionRect[]>
+}
+
+// JXA asking CoreGraphics for on-screen windows. 17 = OnScreenOnly |
+// ExcludeDesktopElements, 0 = kCGNullWindowID. Layer 0 is normal app windows
+// (menu bar, Dock and other chrome sit on higher layers). Only bounds are
+// read, which needs no Screen Recording permission.
+const WINDOW_LIST_SCRIPT = `
+ObjC.import('CoreGraphics');
+const list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(17, 0))) || [];
+JSON.stringify(list.filter((w) => w.kCGWindowLayer === 0 && w.kCGWindowAlpha !== 0).map((w) => w.kCGWindowBounds));
+`
+
+// On-screen app windows, front to back. Empty where it isn't supported or
+// fails, which simply disables the overlay's window mode.
+export function listWindows(): Promise<SelectionRect[]> {
+  if (process.platform !== 'darwin') return Promise.resolve([])
+  return new Promise((resolve) => {
+    execFile('osascript', ['-l', 'JavaScript', '-e', WINDOW_LIST_SCRIPT], { timeout: 3000 }, (err, stdout) => {
+      if (err) return resolve([])
+      try {
+        const bounds: { X: number; Y: number; Width: number; Height: number }[] = JSON.parse(stdout)
+        resolve(
+          bounds
+            .filter((b) => b.Width >= 40 && b.Height >= 40)
+            .map((b) => ({ x: b.X, y: b.Y, width: b.Width, height: b.Height }))
+        )
+      } catch {
+        resolve([])
+      }
+    })
+  })
+}
+
+// Windows relative to the captured display, clipped to it.
+export function windowsOnDisplay(windows: SelectionRect[], display: DisplayInfo): SelectionRect[] {
+  const b = display.bounds
+  return windows.flatMap((w) => {
+    const left = Math.max(w.x, b.x)
+    const top = Math.max(w.y, b.y)
+    const right = Math.min(w.x + w.width, b.x + b.width)
+    const bottom = Math.min(w.y + w.height, b.y + b.height)
+    if (right - left < 1 || bottom - top < 1) return []
+    return [{ x: left - b.x, y: top - b.y, width: right - left, height: bottom - top }]
+  })
 }
 
 // Returns false only when macOS has definitely refused Screen Recording access.

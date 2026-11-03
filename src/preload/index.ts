@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC,
+  type AfterCapture,
   type CaptureMode,
   type CaptureSize,
   type EditorPrefs,
@@ -33,10 +34,14 @@ function toImageData({ width, height, bgra }: RawImage): ImageData {
 }
 
 const api = {
+  // 'darwin' | 'win32' | 'linux': lets pages fit platform chrome (traffic lights).
+  platform: process.platform,
   getSettings: (): Promise<Settings> => ipcRenderer.invoke(IPC.getSettings),
   setSettings: (next: Settings): Promise<Settings> => ipcRenderer.invoke(IPC.setSettings, next),
   setEditorPrefs: (prefs: EditorPrefs): Promise<EditorPrefs> =>
     ipcRenderer.invoke(IPC.setEditorPrefs, prefs),
+  setAfterCapture: (value: AfterCapture): Promise<AfterCapture> =>
+    ipcRenderer.invoke(IPC.setAfterCapture, value),
   pickSaveDirectory: (): Promise<string | null> => ipcRenderer.invoke(IPC.pickSaveDirectory),
   triggerCapture: (mode: CaptureMode): Promise<void> =>
     ipcRenderer.invoke(IPC.triggerCapture, mode),
@@ -74,6 +79,8 @@ const api = {
   overlaySelect: (rect: SelectionRect): Promise<void> =>
     ipcRenderer.invoke(IPC.overlaySelect, rect),
   overlayCancel: (): Promise<void> => ipcRenderer.invoke(IPC.overlayCancel),
+  // App windows on screen at capture time, relative to the overlay, front to back.
+  overlayWindows: (): Promise<SelectionRect[]> => ipcRenderer.invoke(IPC.overlayWindows),
 
   // Editor window
   editorCopy: (dataUrl: string): Promise<void> => ipcRenderer.invoke(IPC.editorCopy, dataUrl),

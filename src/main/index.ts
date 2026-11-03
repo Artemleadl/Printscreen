@@ -9,11 +9,13 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  Notification,
   shell,
   Tray
 } from 'electron'
 import {
   IPC,
+  type AfterCapture,
   type CaptureMode,
   type EditorPrefs,
   type RawImage,
@@ -22,14 +24,16 @@ import {
   type Settings,
   type UploadResult
 } from '../shared/types'
-import { getSettings, saveEditorPrefs, saveSettings } from './store'
+import { getSettings, saveAfterCapture, saveEditorPrefs, saveSettings } from './store'
 import {
   captureCursorDisplay,
   cropCapture,
   hasScreenAccess,
+  listWindows,
   registerForScreenAccess,
   screenAccessStatus,
   toRawImage,
+  windowsOnDisplay,
   type Capture
 } from './capture'
 import { uploadImage } from './uploader'
@@ -66,6 +70,20 @@ function timestampName(ext = 'png'): string {
   const d = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   return `Screenshot ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} at ${pad(d.getHours())}.${pad(d.getMinutes())}.${pad(d.getSeconds())}.${ext}`
+}
+
+// Writes a PNG into the save folder and returns its path.
+async function savePng(png: Buffer): Promise<string> {
+  const dir = getSettings().saveDirectory || app.getPath('pictures')
+  await mkdir(dir, { recursive: true })
+  const filePath = join(dir, timestampName())
+  await writeFile(filePath, png)
+  return filePath
+}
+
+// Quiet confirmation for captures that skip the editor.
+function notify(title: string, body = ''): void {
+  if (Notification.isSupported()) new Notification({ title, body, silent: true }).show()
 }
 
 // --- Capture orchestration -------------------------------------------------
@@ -123,6 +141,20 @@ async function openEditor(capture: Capture, since: number): Promise<void> {
   win.focus()
   logTiming(drawn ? 'editor shown' : 'editor shown before its image was drawn', since)
   if (getSettings().copyOnCapture) clipboard.writeImage(capture.image)
+}
+
+// Hands a finished capture (selection, window or full screen) to whatever the
+// "After capture" option asks for.
+async function finishCapture(capture: Capture, since: number): Promise<void> {
+  const { afterCapture } = getSettings()
+  if (afterCapture === 'editor') return openEditor(capture, since)
+  if (afterCapture === 'copy') {
+    clipboard.writeImage(capture.image)
+    notify('Screenshot copied to clipboard')
+  } else {
+    notify('Screenshot saved', await savePng(capture.image.toPNG()))
+  }
+  logTiming(`${afterCapture} done`, since)
 }
 
 // Region mode: cover the display so the user can drag a selection over the
@@ -188,10 +220,13 @@ async function startCapture(mode: CaptureMode): Promise<void> {
       overlayWindow.close()
     }
     const started = performance.now()
-    const capture = await captureCursorDisplay()
+    // The overlay's window mode needs the window layout as it was at the
+    // shortcut, so list windows alongside the grab.
+    const windows = mode === 'region' ? listWindows() : undefined
+    const capture: Capture = { ...(await captureCursorDisplay()), windows }
     if (seq !== captureSeq) return
     logTiming(`${mode}: screen grabbed`, started)
-    if (mode === 'fullscreen') await openEditor(capture, started)
+    if (mode === 'fullscreen') await finishCapture(capture, started)
     else await openOverlay(capture, started)
   } catch (err) {
     showCaptureError(err)
@@ -291,6 +326,14 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.setEditorPrefs, (_e, prefs: EditorPrefs): EditorPrefs => saveEditorPrefs(prefs))
 
+  ipcMain.handle(IPC.setAfterCapture, (_e, value: AfterCapture): AfterCapture => saveAfterCapture(value))
+
+  // Windows the overlay can snap to, relative to its display.
+  ipcMain.handle(IPC.overlayWindows, async (e): Promise<SelectionRect[]> => {
+    const capture = captures.get(e.sender.id)
+    return capture?.windows ? windowsOnDisplay(await capture.windows, capture.display) : []
+  })
+
   ipcMain.handle(IPC.pickSaveDirectory, async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled ? null : result.filePaths[0]
@@ -311,7 +354,7 @@ function registerIpc(): void {
     BrowserWindow.fromWebContents(e.sender)?.close()
     if (!capture) return
     try {
-      await openEditor({ ...capture, image: cropCapture(capture, rect) }, started)
+      await finishCapture({ ...capture, image: cropCapture(capture, rect) }, started)
     } catch (err) {
       showCaptureError(err)
     }
@@ -325,14 +368,9 @@ function registerIpc(): void {
     clipboard.writeImage(nativeImage.createFromDataURL(dataUrl))
   })
 
-  ipcMain.handle(IPC.editorSave, async (_e, dataUrl: string): Promise<SaveResult> => {
-    const settings = getSettings()
-    const dir = settings.saveDirectory || app.getPath('pictures')
-    await mkdir(dir, { recursive: true })
-    const filePath = join(dir, timestampName())
-    await writeFile(filePath, dataUrlToBuffer(dataUrl))
-    return { filePath }
-  })
+  ipcMain.handle(IPC.editorSave, async (_e, dataUrl: string): Promise<SaveResult> => ({
+    filePath: await savePng(dataUrlToBuffer(dataUrl))
+  }))
 
   ipcMain.handle(IPC.editorUpload, async (_e, dataUrl: string): Promise<UploadResult> => {
     const settings = getSettings()

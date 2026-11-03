@@ -83,6 +83,7 @@ export interface Settings {
   }
   saveDirectory: string
   copyOnCapture: boolean
+  afterCapture: AfterCapture
   launchAtLogin: boolean
   upload: {
     provider: UploadProvider
@@ -91,6 +92,10 @@ export interface Settings {
   }
   editorPrefs: EditorPrefs
 }
+
+// What happens to a finished capture: open it in the editor, or skip the
+// editor and copy it to the clipboard / save it as a PNG straight away.
+export type AfterCapture = 'editor' | 'copy' | 'save'
 
 export interface UploadResult {
   url: string
@@ -107,6 +112,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   saveDirectory: '',
   copyOnCapture: false,
+  afterCapture: 'editor',
   launchAtLogin: false,
   upload: {
     provider: 'none',
@@ -134,6 +140,8 @@ export const IPC = {
   getSettings: 'settings:get',
   setSettings: 'settings:set',
   setEditorPrefs: 'settings:setEditorPrefs',
+  setAfterCapture: 'settings:setAfterCapture',
+  overlayWindows: 'overlay:windows',
   pickSaveDirectory: 'settings:pickSaveDirectory',
   triggerCapture: 'capture:trigger'
 } as const

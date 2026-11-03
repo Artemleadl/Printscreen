@@ -66,13 +66,20 @@ function createOverlayWindow(): BrowserWindow {
 
 function createEditorWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 720,
+    width: 820,
     height: 520,
-    minWidth: 600,
+    minWidth: 760,
     minHeight: 440,
     title: 'Snapshot Studio — Editor',
-    backgroundColor: '#1e1e24',
+    // Light/dark comes from the page (it follows the system theme); this
+    // only shows until the first paint, so keep it neutral.
+    backgroundColor: '#ececec',
     show: false,
+    // macOS: no separate title bar; the traffic lights sit in the toolbar,
+    // like Preview and the system screenshot tool.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 15 } }
+      : {}),
     webPreferences
   })
 
@@ -85,7 +92,7 @@ function createEditorWindow(): BrowserWindow {
 // it on the display the capture came from.
 export function placeEditorWindow(win: BrowserWindow, width: number, height: number): void {
   const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
-  const w = Math.min(Math.max(width + 80, 720), 1400, workArea.width)
+  const w = Math.min(Math.max(width + 80, 820), 1400, workArea.width)
   const h = Math.min(Math.max(height + 160, 520), 900, workArea.height)
   win.setBounds({
     x: Math.round(workArea.x + (workArea.width - w) / 2),

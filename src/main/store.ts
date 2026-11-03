@@ -1,6 +1,12 @@
 import Store from 'electron-store'
 import { app } from 'electron'
-import { DEFAULT_SETTINGS, DEFAULT_EDITOR_PREFS, type EditorPrefs, type Settings } from '../shared/types'
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_EDITOR_PREFS,
+  type AfterCapture,
+  type EditorPrefs,
+  type Settings
+} from '../shared/types'
 
 const store = new Store<{ settings: Settings }>({
   defaults: { settings: DEFAULT_SETTINGS }
@@ -36,4 +42,10 @@ export function saveSettings(next: Settings): Settings {
 export function saveEditorPrefs(prefs: EditorPrefs): EditorPrefs {
   store.set('settings', { ...getSettings(), editorPrefs: prefs })
   return getSettings().editorPrefs
+}
+
+// Saves only the capture bar's "After capture" choice.
+export function saveAfterCapture(afterCapture: AfterCapture): AfterCapture {
+  store.set('settings', { ...getSettings(), afterCapture })
+  return getSettings().afterCapture
 }
