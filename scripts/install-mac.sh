@@ -46,6 +46,14 @@ if ! security find-certificate -c "$IDENTITY" "$KEYCHAIN" >/dev/null 2>&1; then
   fi
 fi
 
+# Dependencies: install them when missing or when package-lock.json changed
+# since the last install (a fresh clone or a pull would otherwise fail with
+# "electron-vite: command not found").
+if [ ! -x node_modules/.bin/electron-vite ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
+  echo "• Installing dependencies (npm ci)"
+  npm ci
+fi
+
 rm -rf dist
 npm run dist:mac
 

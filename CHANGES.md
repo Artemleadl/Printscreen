@@ -1,5 +1,11 @@
 # Изменения
 
+## 10. `npm run install:mac` сам ставит зависимости
+
+**Проблема:** на чистом клоне или когда `node_modules` нет/неполная, `npm run install:mac` падал с `sh: electron-vite: command not found`.
+
+**Решение:** `scripts/install-mac.sh` перед сборкой запускает `npm ci`, если нет `node_modules/.bin/electron-vite` или `package-lock.json` новее последней установки (`node_modules/.package-lock.json`). Если зависимости актуальны — шаг пропускается.
+
 ## 9. Интерфейс как у штатного скриншотера macOS
 
 ### Панель захвата (окно выделения)
