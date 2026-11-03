@@ -72,6 +72,17 @@ To only build a `.dmg` (output: `dist/Snapshot Studio-0.1.0-arm64.dmg`, or `-x64
 | Delete annotation | Select with `V`, then `Backspace` |
 | Close editor | `Esc` |
 
+### Capture bar
+
+After `⌘⇧1` a toolbar like the macOS one (`⌘⇧5`) appears at the bottom of the screen:
+
+- **Entire screen** — click anywhere or press **Capture**;
+- **Window** — the window under the pointer is highlighted, click it (macOS only; `Space` switches between window and area);
+- **Area** — drag a rectangle, it is captured on release;
+- **Options → After capture** — open the editor (default), or skip it and copy the screenshot to the clipboard / save it as a PNG. The choice is remembered (also in Settings).
+
+`Enter` captures, `Esc` cancels.
+
 ### Annotation tools
 
 | Key | Tool |
@@ -187,6 +198,17 @@ npm run install:mac
 | Отмена / Повтор | `⌘Z` / `⌘⇧Z` |
 | Удалить аннотацию | Выделить через `V`, затем `Backspace` |
 | Закрыть редактор | `Esc` |
+
+### Панель захвата
+
+После `⌘⇧1` внизу экрана появляется панель как у штатного скриншотера macOS (`⌘⇧5`):
+
+- **Весь экран** — кликните в любом месте или нажмите **Capture**;
+- **Окно** — окно под курсором подсвечивается, кликните по нему (только macOS; `Пробел` переключает окно и область);
+- **Область** — обведите прямоугольник, снимок делается при отпускании мыши;
+- **Options → After capture** — открыть редактор (по умолчанию) либо сразу скопировать скриншот в буфер / сохранить PNG. Выбор запоминается (есть и в настройках).
+
+`Enter` — снять, `Esc` — отмена.
 
 ### Инструменты аннотаций
 

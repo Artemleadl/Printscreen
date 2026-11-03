@@ -18,14 +18,15 @@ const paths: Record<string, React.ReactNode> = {
   copy: <path d="M8 8h10v12H8zM6 16H4V4h12v2" />,
   save: <path d="M5 3h11l3 3v15H5zM8 3v6h7V3M8 21v-6h8v6" />,
   upload: <path d="M12 16V4M8 8l4-4 4 4M5 16v4h14v-4" />,
-  close: <path d="M6 6l12 12M18 6L6 18" />
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  background: <path d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zM8 7h8a1 1 0 011 1v8a1 1 0 01-1 1H8a1 1 0 01-1-1V8a1 1 0 011-1z" />
 }
 
 export function Icon({ name }: IconProps): React.ReactElement {
   return (
     <svg
-      width="20"
-      height="20"
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill={name === 'step' || name === 'select' ? 'currentColor' : 'none'}
       stroke="currentColor"

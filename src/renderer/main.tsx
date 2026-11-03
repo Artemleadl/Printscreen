@@ -19,6 +19,9 @@ function pickView(): React.ReactElement {
   }
 }
 
+// Lets CSS fit platform chrome, e.g. room for the macOS traffic lights.
+document.documentElement.dataset.platform = window.api.platform
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>{pickView()}</React.StrictMode>
 )

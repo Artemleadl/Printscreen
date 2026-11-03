@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Settings as SettingsType, UploadProvider } from '@shared/types'
+import type { AfterCapture, Settings as SettingsType, UploadProvider } from '@shared/types'
 import './settings.css'
 
 export function Settings(): React.ReactElement {
@@ -63,6 +63,17 @@ export function Settings(): React.ReactElement {
             <input readOnly value={s.saveDirectory} />
             <button onClick={() => void pickDir()}>Choose…</button>
           </div>
+        </label>
+        <label className="row">
+          <span>After capture</span>
+          <select
+            value={s.afterCapture}
+            onChange={(e) => update({ afterCapture: e.target.value as AfterCapture })}
+          >
+            <option value="editor">Open in editor</option>
+            <option value="copy">Copy to clipboard</option>
+            <option value="save">Save to file</option>
+          </select>
         </label>
         <label className="check">
           <input

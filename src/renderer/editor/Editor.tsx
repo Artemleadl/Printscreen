@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CaptureSize } from '@shared/types'
 import { bounds, hitTest, newId, translate, type Annotation, type Point, type Tool } from './annotations'
 import { Toolbar } from './Toolbar'
-import { FrameBar } from './FrameBar'
 import { composeFrame, DEFAULT_FRAME, frameSize, type Frame } from './frame'
 import './editor.css'
 
@@ -151,6 +150,13 @@ export function Editor(): React.ReactElement {
   useEffect(() => {
     if (baseLoaded) redraw()
   }, [baseLoaded, redraw])
+
+  // Status messages show as a pill that fades out; "Uploading…" stays until done.
+  useEffect(() => {
+    if (!status || status.endsWith('…')) return
+    const timer = setTimeout(() => setStatus(''), 3000)
+    return () => clearTimeout(timer)
+  }, [status])
 
   // Main keeps the window hidden until the capture is on the canvas.
   useEffect(() => {
@@ -406,6 +412,8 @@ export function Editor(): React.ReactElement {
         setWidth={setWidth}
         blurRadius={blurRadius}
         setBlurRadius={setBlurRadius}
+        frame={frame}
+        setFrame={setFrame}
         canUndo={past.length > 0}
         canRedo={future.length > 0}
         onUndo={undo}
@@ -417,8 +425,6 @@ export function Editor(): React.ReactElement {
         uploadEnabled={uploadEnabled}
         busy={busy}
       />
-
-      <FrameBar frame={frame} setFrame={setFrame} />
 
       <div className="editor-stage">
         <div className="canvas-wrap">
@@ -442,7 +448,8 @@ export function Editor(): React.ReactElement {
         </div>
       </div>
 
-      <div className="status-bar">{status || (payload ? `${payload.width} × ${payload.height}px` : 'Waiting for capture…')}</div>
+      {payload && <div className="size-label">{payload.width} × {payload.height}</div>}
+      {status && <div className="status-pill">{status}</div>}
     </div>
   )
 }
