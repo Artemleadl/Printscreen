@@ -97,7 +97,7 @@ function notify(title: string, body = ""): void {
 // --- Capture orchestration -------------------------------------------------
 
 // Log of what capture does and where its time goes: printed in development,
-// and always appended to ~/Library/Logs/Snapshot Studio/main.log (the app's
+// and always appended to ~/Library/Logs/snapshot-studio/main.log (the app's
 // logs folder elsewhere), so a problem on someone's machine can be read back.
 let logFile: string | null = null;
 function devLog(message: string): void {
